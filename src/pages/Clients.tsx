@@ -80,11 +80,30 @@ export default function ClientsPage() {
     }
   });
 
+  const handleExport = () => {
+    const exportData = (clients || []).map((c: any) => ({
+      'ID': c.id,
+      'Company Name': c.company_name,
+      'Email': c.email,
+      'Contact Name': c.contact_name,
+      'Contact Phone': c.contact_phone,
+      'Status': c.status,
+      'Credit Limit': Number(c.credit_limit || 0),
+      'Credit Terms': c.credit_terms || ''
+    }));
+    exportToExcel(exportData, 'clients');
+  };
+
   const canApprove = role === 'super_admin' || role === 'sales';
   const canCredit = role === 'super_admin' || role === 'finance';
 
   return (
     <div className="space-y-6">
+      <div className="flex justify-end items-center">
+        <Button variant="outline" onClick={handleExport}>
+          Export to Excel
+        </Button>
+      </div>
       <div className="bg-white rounded-md border shadow-sm overflow-hidden">
         <Table>
           <TableHeader>

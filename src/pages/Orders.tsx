@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../lib/api';
 import { useAuth } from '../contexts/AuthContext';
+import { exportToExcel } from '../lib/exportToExcel';
 import { 
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow 
 } from '../components/ui/table';
@@ -62,8 +63,25 @@ export default function OrdersPage() {
     );
   };
 
+  const handleExport = () => {
+    const exportData = (orders || []).map((o: any) => ({
+      'Order ID': o.id,
+      'Client ID': o.client_id,
+      'Date': new Date(o.createdAt).toLocaleDateString(),
+      'Total': Number(o.total_amount),
+      'Payment Method': o.payment_method,
+      'Status': o.status
+    }));
+    exportToExcel(exportData, 'orders');
+  };
+
   return (
     <div className="space-y-6">
+      <div className="flex justify-end items-center">
+        <Button variant="outline" onClick={handleExport}>
+          Export to Excel
+        </Button>
+      </div>
       <div className="bg-white rounded-md border shadow-sm overflow-hidden">
         <Table>
           <TableHeader>

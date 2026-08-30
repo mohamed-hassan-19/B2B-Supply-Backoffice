@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../lib/api';
+import { exportToExcel } from '../lib/exportToExcel';
 import { 
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow 
 } from '../components/ui/table';
@@ -42,13 +43,33 @@ export default function InvoicesPage() {
     return new Date(dueDateStr) < new Date();
   };
 
+  const handleExport = () => {
+    const exportData = (invoices || []).map((inv: any) => {
+      const overdue = inv.payment_status !== 'paid' && isOverdue(inv.due_date);
+      return {
+        'Invoice ID': inv.id,
+        'Order ID': inv.order_id,
+        'Created': new Date(inv.createdAt).toLocaleDateString(),
+        'Due Date': inv.due_date ? new Date(inv.due_date).toLocaleDateString() : 'N/A',
+        'Amount': Number(inv.amount),
+        'Status': overdue ? 'OVERDUE' : inv.payment_status
+      };
+    });
+    exportToExcel(exportData, 'invoices');
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <h2 className="text-xl font-semibold">Invoices</h2>
-        <Button onClick={() => setIsGenerateModalOpen(true)}>
-          + Generate Invoice
-        </Button>
+        <div className="flex items-center gap-3">
+          <Button variant="outline" onClick={handleExport}>
+            Export to Excel
+          </Button>
+          <Button onClick={() => setIsGenerateModalOpen(true)}>
+            + Generate Invoice
+          </Button>
+        </div>
       </div>
 
       <div className="bg-white rounded-md border shadow-sm overflow-hidden">

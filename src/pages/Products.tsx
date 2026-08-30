@@ -2,6 +2,7 @@ import { useState, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../lib/api';
 import { useAuth } from '../contexts/AuthContext';
+import { exportToExcel } from '../lib/exportToExcel';
 import { 
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow 
 } from '../components/ui/table';
@@ -124,6 +125,19 @@ export default function ProductsPage() {
     editMutation.mutate(payload);
   };
 
+  const handleExport = () => {
+    const exportData = filteredProducts.map((p: any) => ({
+      'ID': p.id,
+      'Name': p.name,
+      'Category': p.category,
+      'Price': Number(p.price),
+      'Original Price': p.original_price ? Number(p.original_price) : null,
+      'Stock Level': Number(p.stock_level),
+      'Status': p.is_active ? 'Active' : 'Inactive'
+    }));
+    exportToExcel(exportData, 'products');
+  };
+
   const filteredProducts = products?.filter((p: any) => 
     p.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
     p.category.toLowerCase().includes(searchTerm.toLowerCase())
@@ -135,12 +149,17 @@ export default function ProductsPage() {
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
-        <Input 
-          placeholder="Search products..." 
-          className="max-w-sm bg-white" 
-          value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
-        />
+        <div className="flex items-center gap-3">
+          <Input 
+            placeholder="Search products..." 
+            className="max-w-sm bg-white" 
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+          />
+          <Button variant="outline" onClick={handleExport}>
+            Export to Excel
+          </Button>
+        </div>
         {canEdit && (
           <Button onClick={() => openEdit()}>
             + New Product

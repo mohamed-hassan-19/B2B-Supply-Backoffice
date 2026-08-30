@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../lib/api';
+import { useAuth } from '../contexts/AuthContext';
+import { exportToExcel } from '../lib/exportToExcel';
 import { 
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow 
 } from '../components/ui/table';
@@ -49,17 +51,33 @@ export default function QuotesPage() {
     });
   };
 
+  const handleExport = () => {
+    const exportData = (quotes || []).map((q: any) => ({
+      'Quote ID': q.id,
+      'Client ID': q.client_id,
+      'Date': new Date(q.createdAt).toLocaleDateString(),
+      'Order ID': q.order_id || 'N/A',
+      'Status': q.status
+    }));
+    exportToExcel(exportData, 'quotes');
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <h2 className="text-xl font-semibold">Sales Quotes</h2>
-        <Button onClick={() => {
-          setClientId('');
-          setItems([{ productId: '', quantity: '', quotedPrice: '' }]);
-          setIsDraftModalOpen(true);
-        }}>
-          + Draft Quote
-        </Button>
+        <div className="flex items-center gap-3">
+          <Button variant="outline" onClick={handleExport}>
+            Export to Excel
+          </Button>
+          <Button onClick={() => {
+            setClientId('');
+            setItems([{ productId: '', quantity: '', quotedPrice: '' }]);
+            setIsDraftModalOpen(true);
+          }}>
+            + Draft Quote
+          </Button>
+        </div>
       </div>
 
       <div className="bg-white rounded-md border shadow-sm overflow-hidden">
