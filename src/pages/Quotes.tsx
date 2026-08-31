@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../lib/api';
-import { useAuth } from '../contexts/AuthContext';
 import { exportToExcel } from '../lib/exportToExcel';
 import { 
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow 
@@ -16,6 +15,7 @@ export default function QuotesPage() {
   const queryClient = useQueryClient();
   const [isDraftModalOpen, setIsDraftModalOpen] = useState(false);
   const [clientId, setClientId] = useState('');
+  const [validUntil, setValidUntil] = useState('');
   const [items, setItems] = useState([{ productId: '', quantity: '', quotedPrice: '' }]);
 
   const { data: quotes, isLoading } = useQuery({
@@ -41,14 +41,18 @@ export default function QuotesPage() {
 
   const handleDraftSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    draftMutation.mutate({
+    const payload: any = {
       clientId: parseInt(clientId),
       items: items.map(i => ({
         productId: parseInt(i.productId),
         quantity: parseInt(i.quantity),
         quotedPrice: parseFloat(i.quotedPrice)
       }))
-    });
+    };
+    if (validUntil) {
+      payload.valid_until = new Date(validUntil).toISOString();
+    }
+    draftMutation.mutate(payload);
   };
 
   const handleExport = () => {
@@ -56,6 +60,7 @@ export default function QuotesPage() {
       'Quote ID': q.id,
       'Client ID': q.client_id,
       'Date': new Date(q.createdAt).toLocaleDateString(),
+      'Valid Until': q.valid_until ? new Date(q.valid_until).toLocaleDateString() : 'No Expiry',
       'Order ID': q.order_id || 'N/A',
       'Status': q.status
     }));
@@ -72,6 +77,7 @@ export default function QuotesPage() {
           </Button>
           <Button onClick={() => {
             setClientId('');
+            setValidUntil('');
             setItems([{ productId: '', quantity: '', quotedPrice: '' }]);
             setIsDraftModalOpen(true);
           }}>
@@ -87,6 +93,7 @@ export default function QuotesPage() {
               <TableHead>Quote ID</TableHead>
               <TableHead>Client ID</TableHead>
               <TableHead>Date</TableHead>
+              <TableHead>Valid Until</TableHead>
               <TableHead>Order ID</TableHead>
               <TableHead>Status</TableHead>
               <TableHead className="text-right">Actions</TableHead>
@@ -94,12 +101,13 @@ export default function QuotesPage() {
           </TableHeader>
           <TableBody>
             {isLoading ? (
-              <TableRow><TableCell colSpan={6} className="text-center py-8">Loading...</TableCell></TableRow>
+              <TableRow><TableCell colSpan={7} className="text-center py-8">Loading...</TableCell></TableRow>
             ) : quotes?.map((q: any) => (
               <TableRow key={q.id}>
                 <TableCell>#{q.id}</TableCell>
                 <TableCell>{q.client_id}</TableCell>
                 <TableCell>{new Date(q.createdAt).toLocaleDateString()}</TableCell>
+                <TableCell>{q.valid_until ? new Date(q.valid_until).toLocaleDateString() : '—'}</TableCell>
                 <TableCell>{q.order_id ? `#${q.order_id}` : '-'}</TableCell>
                 <TableCell>
                   <Badge variant="outline">{q.status}</Badge>
@@ -121,9 +129,15 @@ export default function QuotesPage() {
             <DialogTitle>Draft New Quote</DialogTitle>
           </DialogHeader>
           <form onSubmit={handleDraftSubmit} className="space-y-4 py-4">
-            <div className="space-y-2">
-              <Label>Client ID</Label>
-              <Input required type="number" value={clientId} onChange={e => setClientId(e.target.value)} />
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Client ID</Label>
+                <Input required type="number" value={clientId} onChange={e => setClientId(e.target.value)} />
+              </div>
+              <div className="space-y-2">
+                <Label>Valid Until (Optional)</Label>
+                <Input type="date" value={validUntil} onChange={e => setValidUntil(e.target.value)} />
+              </div>
             </div>
             
             <div className="pt-4 border-t">
@@ -140,7 +154,7 @@ export default function QuotesPage() {
                     newItems[idx].quantity = e.target.value;
                     setItems(newItems);
                   }} />
-                  <Input required placeholder="Custom Price ($)" type="number" step="0.01" value={item.quotedPrice} onChange={e => {
+                  <Input required placeholder="Custom Price (£)" type="number" step="0.01" value={item.quotedPrice} onChange={e => {
                     const newItems = [...items];
                     newItems[idx].quotedPrice = e.target.value;
                     setItems(newItems);

@@ -1,4 +1,3 @@
-import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../lib/api';
 import { exportToExcel } from '../lib/exportToExcel';
@@ -7,14 +6,9 @@ import {
 } from '../components/ui/table';
 import { Button } from '../components/ui/button';
 import { Badge } from '../components/ui/badge';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../components/ui/dialog';
-import { Input } from '../components/ui/input';
-import { Label } from '../components/ui/label';
 
 export default function InvoicesPage() {
   const queryClient = useQueryClient();
-  const [isGenerateModalOpen, setIsGenerateModalOpen] = useState(false);
-  const [orderId, setOrderId] = useState('');
 
   const { data: invoices, isLoading } = useQuery({
     queryKey: ['adminInvoices'],
@@ -29,12 +23,17 @@ export default function InvoicesPage() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['adminInvoices'] })
   });
 
-  const generateMutation = useMutation({
-    mutationFn: (id: string) => api.post(`/api/admin/invoices/generate/${id}`),
-    onSuccess: () => {
+  const getPdfMutation = useMutation({
+    mutationFn: (id: number) => api.get(`/api/admin/invoices/${id}/pdf`),
+    onSuccess: (res) => {
       queryClient.invalidateQueries({ queryKey: ['adminInvoices'] });
-      setIsGenerateModalOpen(false);
-      setOrderId('');
+      // Only show alert if we actually regenerated it
+      if (res.data?.generated) {
+        // optional: alert('PDF was updated to reflect recent changes.');
+      }
+      if (res.data?.pdfUrl) {
+        window.open(`http://localhost:3000${res.data.pdfUrl}`, '_blank');
+      }
     }
   });
 
@@ -45,13 +44,13 @@ export default function InvoicesPage() {
 
   const handleExport = () => {
     const exportData = (invoices || []).map((inv: any) => {
-      const overdue = inv.payment_status !== 'paid' && isOverdue(inv.due_date);
+      const overdue = inv.payment_status !== 'paid' && inv.payment_status !== 'void' && isOverdue(inv.due_date);
       return {
-        'Invoice ID': inv.id,
+        'Invoice ID': inv.invoice_number || inv.id,
         'Order ID': inv.order_id,
         'Created': new Date(inv.createdAt).toLocaleDateString(),
         'Due Date': inv.due_date ? new Date(inv.due_date).toLocaleDateString() : 'N/A',
-        'Amount': Number(inv.amount),
+        'Amount': Number(inv.grand_total || inv.amount),
         'Status': overdue ? 'OVERDUE' : inv.payment_status
       };
     });
@@ -66,9 +65,6 @@ export default function InvoicesPage() {
           <Button variant="outline" onClick={handleExport}>
             Export to Excel
           </Button>
-          <Button onClick={() => setIsGenerateModalOpen(true)}>
-            + Generate Invoice
-          </Button>
         </div>
       </div>
 
@@ -76,10 +72,9 @@ export default function InvoicesPage() {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Invoice ID</TableHead>
+              <TableHead>Invoice #</TableHead>
               <TableHead>Order ID</TableHead>
               <TableHead>Created</TableHead>
-              <TableHead>Due Date</TableHead>
               <TableHead>Amount</TableHead>
               <TableHead>Status</TableHead>
               <TableHead className="text-right">Actions</TableHead>
@@ -87,26 +82,26 @@ export default function InvoicesPage() {
           </TableHeader>
           <TableBody>
             {isLoading ? (
-              <TableRow><TableCell colSpan={7} className="text-center py-8">Loading...</TableCell></TableRow>
+              <TableRow><TableCell colSpan={6} className="text-center py-8">Loading...</TableCell></TableRow>
             ) : invoices?.map((inv: any) => {
-              const overdue = inv.payment_status !== 'paid' && isOverdue(inv.due_date);
+              const overdue = inv.payment_status !== 'paid' && inv.payment_status !== 'void' && isOverdue(inv.due_date);
               
               return (
-                <TableRow key={inv.id} className={overdue ? 'bg-red-50' : ''}>
-                  <TableCell>#{inv.id}</TableCell>
+                <TableRow key={inv.id} className={overdue ? 'bg-red-50' : inv.payment_status === 'void' ? 'opacity-50' : ''}>
+                  <TableCell className="font-medium">{inv.invoice_number || `#${inv.id}`}</TableCell>
                   <TableCell>#{inv.order_id}</TableCell>
                   <TableCell>{new Date(inv.createdAt).toLocaleDateString()}</TableCell>
-                  <TableCell className={overdue ? 'text-red-600 font-medium' : ''}>
-                    {inv.due_date ? new Date(inv.due_date).toLocaleDateString() : '-'}
-                  </TableCell>
-                  <TableCell>${Number(inv.amount).toFixed(2)}</TableCell>
+                  <TableCell>£{Number(inv.grand_total || inv.amount).toFixed(2)}</TableCell>
                   <TableCell>
-                    <Badge variant={inv.payment_status === 'paid' ? 'secondary' : overdue ? 'destructive' : 'outline'}>
-                      {overdue ? 'OVERDUE' : inv.payment_status}
+                    <Badge variant={inv.payment_status === 'paid' ? 'secondary' : inv.payment_status === 'void' ? 'outline' : overdue ? 'destructive' : 'outline'}>
+                      {overdue ? 'OVERDUE' : inv.payment_status.toUpperCase()}
                     </Badge>
                   </TableCell>
-                  <TableCell className="text-right">
-                    {inv.payment_status !== 'paid' && (
+                  <TableCell className="text-right space-x-2">
+                    <Button variant="outline" size="sm" onClick={() => getPdfMutation.mutate(inv.id)}>
+                      View Invoice
+                    </Button>
+                    {inv.payment_status !== 'paid' && inv.payment_status !== 'void' && (
                       <Button size="sm" onClick={() => payMutation.mutate(inv.id)}>Mark Paid</Button>
                     )}
                   </TableCell>
@@ -116,24 +111,6 @@ export default function InvoicesPage() {
           </TableBody>
         </Table>
       </div>
-
-      <Dialog open={isGenerateModalOpen} onOpenChange={setIsGenerateModalOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Generate Invoice from Order</DialogTitle>
-          </DialogHeader>
-          <form onSubmit={(e) => {
-            e.preventDefault();
-            generateMutation.mutate(orderId);
-          }} className="space-y-4 py-4">
-            <div className="space-y-2">
-              <Label>Delivered Order ID</Label>
-              <Input required type="number" value={orderId} onChange={e => setOrderId(e.target.value)} />
-            </div>
-            <Button type="submit" className="w-full">Generate</Button>
-          </form>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }

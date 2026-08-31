@@ -10,6 +10,7 @@ import { Badge } from '../components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../components/ui/dialog';
 import { Label } from '../components/ui/label';
 import { Input } from '../components/ui/input';
+import { exportToExcel } from '../lib/exportToExcel';
 
 function ClientOrdersHistory({ clientId }: { clientId: number }) {
   const { data: orders, isLoading } = useQuery({
@@ -40,7 +41,7 @@ function ClientOrdersHistory({ clientId }: { clientId: number }) {
               <TableCell>#{o.id}</TableCell>
               <TableCell>{new Date(o.createdAt).toLocaleDateString()}</TableCell>
               <TableCell><Badge variant="outline">{o.status}</Badge></TableCell>
-              <TableCell>${Number(o.total_amount).toFixed(2)}</TableCell>
+              <TableCell>£{Number(o.total_amount).toFixed(2)}</TableCell>
             </TableRow>
           ))}
         </TableBody>
@@ -92,6 +93,7 @@ export default function ClientsPage() {
       'Credit Terms': c.credit_terms || ''
     }));
     exportToExcel(exportData, 'clients');
+
   };
 
   const canApprove = role === 'super_admin' || role === 'sales';
@@ -129,7 +131,7 @@ export default function ClientsPage() {
                     {c.status}
                   </Badge>
                 </TableCell>
-                <TableCell>${c.credit_limit || 0}</TableCell>
+                <TableCell>£{c.credit_limit || 0}</TableCell>
                 <TableCell className="text-right space-x-2">
                   <Button variant="outline" size="sm" onClick={() => {
                     setActiveClient(c);
@@ -172,7 +174,7 @@ export default function ClientsPage() {
                 <div><span className="font-semibold">Phone:</span> {activeClient.contact_phone}</div>
                 <div><span className="font-semibold">Tax ID:</span> {activeClient.tax_id}</div>
                 <div><span className="font-semibold">Status:</span> {activeClient.status}</div>
-                <div><span className="font-semibold">Credit Limit:</span> ${activeClient.credit_limit || 0}</div>
+                <div><span className="font-semibold">Credit Limit:</span> £{activeClient.credit_limit || 0}</div>
                 <div><span className="font-semibold">Terms:</span> {activeClient.credit_terms || 0} Days</div>
               </div>
               <div className="pt-4 border-t">
@@ -198,7 +200,7 @@ export default function ClientsPage() {
             });
           }} className="space-y-4 py-4">
             <div className="space-y-2">
-              <Label>Credit Limit ($)</Label>
+              <Label>Credit Limit (£)</Label>
               <Input required type="number" step="0.01" value={creditData.credit_limit} onChange={e => setCreditData({...creditData, credit_limit: e.target.value})} />
             </div>
             <div className="space-y-2">

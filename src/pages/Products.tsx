@@ -189,10 +189,10 @@ export default function ProductsPage() {
                 <TableCell className="font-medium">{p.name}</TableCell>
                 <TableCell>{p.category}</TableCell>
                 <TableCell>
-                  ${Number(p.price).toFixed(2)}
+                  £{Number(p.price).toFixed(2)}
                   {p.original_price && (
                     <span className="text-muted-foreground line-through ml-2 text-xs">
-                      ${Number(p.original_price).toFixed(2)}
+                      £{Number(p.original_price).toFixed(2)}
                     </span>
                   )}
                 </TableCell>

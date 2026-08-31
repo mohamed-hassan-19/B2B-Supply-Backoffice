@@ -13,7 +13,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../components/
 export default function OrdersPage() {
   const { role } = useAuth();
   const queryClient = useQueryClient();
-  const [activeOrder, setActiveOrder] = useState<any>(null);
+  const [activeOrderId, setActiveOrderId] = useState<number | null>(null);
   const [isViewModalOpen, setIsViewModalOpen] = useState(false);
 
   const { data: orders, isLoading } = useQuery({
@@ -23,6 +23,18 @@ export default function OrdersPage() {
       return res.data;
     }
   });
+
+  const { data: activeOrderDetails, isLoading: isDetailsLoading } = useQuery({
+    queryKey: ['adminOrder', activeOrderId],
+    queryFn: async () => {
+      const res = await api.get(`/api/admin/orders/${activeOrderId}`);
+      return res.data;
+    },
+    enabled: !!activeOrderId && isViewModalOpen,
+  });
+
+  const activeOrder = activeOrderDetails?.order || null;
+  const activeItems = activeOrderDetails?.items || [];
 
   const actionMutation = useMutation({
     mutationFn: ({ id, action }: { id: number, action: string }) => 
@@ -40,7 +52,7 @@ export default function OrdersPage() {
     return (
       <div className="space-x-2">
         <Button variant="outline" size="sm" onClick={() => {
-          setActiveOrder(o);
+          setActiveOrderId(o.id);
           setIsViewModalOpen(true);
         }}>View</Button>
         
@@ -103,7 +115,7 @@ export default function OrdersPage() {
                 <TableCell>#{o.id}</TableCell>
                 <TableCell>{o.client_id}</TableCell>
                 <TableCell>{new Date(o.createdAt).toLocaleDateString()}</TableCell>
-                <TableCell>${Number(o.total_amount).toFixed(2)}</TableCell>
+                <TableCell>£{Number(o.total_amount).toFixed(2)}</TableCell>
                 <TableCell>{o.payment_method}</TableCell>
                 <TableCell>
                   <Badge variant={o.status === 'cancelled' ? 'destructive' : 'outline'}>{o.status}</Badge>
@@ -115,7 +127,10 @@ export default function OrdersPage() {
         </Table>
       </div>
 
-      <Dialog open={isViewModalOpen} onOpenChange={setIsViewModalOpen}>
+      <Dialog open={isViewModalOpen} onOpenChange={(open) => {
+        setIsViewModalOpen(open);
+        if (!open) setActiveOrderId(null);
+      }}>
         <DialogContent className="max-w-2xl">
           <DialogHeader>
             <DialogTitle>Order #{activeOrder?.id} Details</DialogTitle>
@@ -127,7 +142,7 @@ export default function OrdersPage() {
                 <div><span className="font-semibold">Date:</span> {new Date(activeOrder.createdAt).toLocaleString()}</div>
                 <div><span className="font-semibold">Status:</span> {activeOrder.status}</div>
                 <div><span className="font-semibold">Payment:</span> {activeOrder.payment_method}</div>
-                <div><span className="font-semibold">Total Amount:</span> ${Number(activeOrder.total_amount).toFixed(2)}</div>
+                <div><span className="font-semibold">Total Amount:</span> £{Number(activeOrder.total_amount).toFixed(2)}</div>
               </div>
               
               <h3 className="font-semibold mb-2">Order Items</h3>
@@ -142,12 +157,14 @@ export default function OrdersPage() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {activeOrder.OrderItems?.map((item: any) => (
+                    {isDetailsLoading ? (
+                      <TableRow><TableCell colSpan={4} className="text-center py-4">Loading items...</TableCell></TableRow>
+                    ) : activeItems?.map((item: any) => (
                       <TableRow key={item.id}>
                         <TableCell>{item.product_name}</TableCell>
-                        <TableCell>${Number(item.unit_price).toFixed(2)}</TableCell>
+                        <TableCell>£{Number(item.unit_price).toFixed(2)}</TableCell>
                         <TableCell>{item.quantity}</TableCell>
-                        <TableCell>${(Number(item.unit_price) * item.quantity).toFixed(2)}</TableCell>
+                        <TableCell>£{(Number(item.unit_price) * item.quantity).toFixed(2)}</TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
