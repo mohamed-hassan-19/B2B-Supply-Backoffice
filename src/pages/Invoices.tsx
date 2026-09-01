@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../lib/api';
 import { exportToExcel } from '../lib/exportToExcel';
@@ -6,9 +7,15 @@ import {
 } from '../components/ui/table';
 import { Button } from '../components/ui/button';
 import { Badge } from '../components/ui/badge';
+import { Dialog, DialogContent } from '../components/ui/dialog';
+import { InvoiceDetail } from '../components/InvoiceDetail';
+import { useAuth } from '../contexts/AuthContext';
 
 export default function InvoicesPage() {
+  const { role } = useAuth();
+  const canWrite = role === 'super_admin' || role === 'finance';
   const queryClient = useQueryClient();
+  const [selectedInvoiceId, setSelectedInvoiceId] = useState<number | null>(null);
 
   const { data: invoices, isLoading } = useQuery({
     queryKey: ['adminInvoices'],
@@ -27,10 +34,6 @@ export default function InvoicesPage() {
     mutationFn: (id: number) => api.get(`/api/admin/invoices/${id}/pdf`),
     onSuccess: (res) => {
       queryClient.invalidateQueries({ queryKey: ['adminInvoices'] });
-      // Only show alert if we actually regenerated it
-      if (res.data?.generated) {
-        // optional: alert('PDF was updated to reflect recent changes.');
-      }
       if (res.data?.pdfUrl) {
         window.open(`http://localhost:3000${res.data.pdfUrl}`, '_blank');
       }
@@ -98,10 +101,13 @@ export default function InvoicesPage() {
                     </Badge>
                   </TableCell>
                   <TableCell className="text-right space-x-2">
-                    <Button variant="outline" size="sm" onClick={() => getPdfMutation.mutate(inv.id)}>
-                      View Invoice
+                    <Button variant="outline" size="sm" onClick={() => setSelectedInvoiceId(inv.id)}>
+                      View
                     </Button>
-                    {inv.payment_status !== 'paid' && inv.payment_status !== 'void' && (
+                    <Button variant="outline" size="sm" onClick={() => getPdfMutation.mutate(inv.id)}>
+                      PDF
+                    </Button>
+                    {inv.payment_status !== 'paid' && inv.payment_status !== 'void' && canWrite && (
                       <Button size="sm" onClick={() => payMutation.mutate(inv.id)}>Mark Paid</Button>
                     )}
                   </TableCell>
@@ -111,6 +117,12 @@ export default function InvoicesPage() {
           </TableBody>
         </Table>
       </div>
+
+      <Dialog open={!!selectedInvoiceId} onOpenChange={(open) => !open && setSelectedInvoiceId(null)}>
+        <DialogContent className="max-w-3xl">
+          {selectedInvoiceId && <InvoiceDetail invoiceId={selectedInvoiceId} apiPath="/api/admin/invoices" />}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

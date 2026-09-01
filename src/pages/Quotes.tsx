@@ -10,8 +10,11 @@ import { Badge } from '../components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../components/ui/dialog';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
+import { useAuth } from '../contexts/AuthContext';
 
 export default function QuotesPage() {
+  const { role } = useAuth();
+  const canWrite = role === 'super_admin' || role === 'sales' || role === 'operator';
   const queryClient = useQueryClient();
   const [isDraftModalOpen, setIsDraftModalOpen] = useState(false);
   const [clientId, setClientId] = useState('');
@@ -58,7 +61,7 @@ export default function QuotesPage() {
   const handleExport = () => {
     const exportData = (quotes || []).map((q: any) => ({
       'Quote ID': q.id,
-      'Client ID': q.client_id,
+      'Client Name': q.Client?.company_name || q.client_id,
       'Date': new Date(q.createdAt).toLocaleDateString(),
       'Valid Until': q.valid_until ? new Date(q.valid_until).toLocaleDateString() : 'No Expiry',
       'Order ID': q.order_id || 'N/A',
@@ -75,14 +78,16 @@ export default function QuotesPage() {
           <Button variant="outline" onClick={handleExport}>
             Export to Excel
           </Button>
-          <Button onClick={() => {
-            setClientId('');
-            setValidUntil('');
-            setItems([{ productId: '', quantity: '', quotedPrice: '' }]);
-            setIsDraftModalOpen(true);
-          }}>
-            + Draft Quote
-          </Button>
+          {canWrite && (
+            <Button onClick={() => {
+              setClientId('');
+              setValidUntil('');
+              setItems([{ productId: '', quantity: '', quotedPrice: '' }]);
+              setIsDraftModalOpen(true);
+            }}>
+              + Draft Quote
+            </Button>
+          )}
         </div>
       </div>
 
@@ -91,7 +96,7 @@ export default function QuotesPage() {
           <TableHeader>
             <TableRow>
               <TableHead>Quote ID</TableHead>
-              <TableHead>Client ID</TableHead>
+              <TableHead>Client Name</TableHead>
               <TableHead>Date</TableHead>
               <TableHead>Valid Until</TableHead>
               <TableHead>Order ID</TableHead>
@@ -105,7 +110,7 @@ export default function QuotesPage() {
             ) : quotes?.map((q: any) => (
               <TableRow key={q.id}>
                 <TableCell>#{q.id}</TableCell>
-                <TableCell>{q.client_id}</TableCell>
+                <TableCell>{q.Client?.company_name || q.client_id}</TableCell>
                 <TableCell>{new Date(q.createdAt).toLocaleDateString()}</TableCell>
                 <TableCell>{q.valid_until ? new Date(q.valid_until).toLocaleDateString() : '—'}</TableCell>
                 <TableCell>{q.order_id ? `#${q.order_id}` : '-'}</TableCell>
@@ -113,7 +118,7 @@ export default function QuotesPage() {
                   <Badge variant="outline">{q.status}</Badge>
                 </TableCell>
                 <TableCell className="text-right">
-                  {q.status === 'pending' && (
+                  {q.status === 'pending' && canWrite && (
                     <Button size="sm" onClick={() => sendMutation.mutate(q.id)}>Send to Client</Button>
                   )}
                 </TableCell>

@@ -78,7 +78,7 @@ export default function OrdersPage() {
   const handleExport = () => {
     const exportData = (orders || []).map((o: any) => ({
       'Order ID': o.id,
-      'Client ID': o.client_id,
+      'Client Name': o.Client?.company_name || o.client_id,
       'Date': new Date(o.createdAt).toLocaleDateString(),
       'Total': Number(o.total_amount),
       'Payment Method': o.payment_method,
@@ -99,7 +99,7 @@ export default function OrdersPage() {
           <TableHeader>
             <TableRow>
               <TableHead>Order ID</TableHead>
-              <TableHead>Client ID</TableHead>
+              <TableHead>Client Name</TableHead>
               <TableHead>Date</TableHead>
               <TableHead>Total</TableHead>
               <TableHead>Payment</TableHead>
@@ -113,7 +113,7 @@ export default function OrdersPage() {
             ) : orders?.map((o: any) => (
               <TableRow key={o.id}>
                 <TableCell>#{o.id}</TableCell>
-                <TableCell>{o.client_id}</TableCell>
+                <TableCell>{o.Client?.company_name || o.client_id}</TableCell>
                 <TableCell>{new Date(o.createdAt).toLocaleDateString()}</TableCell>
                 <TableCell>£{Number(o.total_amount).toFixed(2)}</TableCell>
                 <TableCell>{o.payment_method}</TableCell>
@@ -138,7 +138,7 @@ export default function OrdersPage() {
           {activeOrder && (
             <div className="space-y-4 py-4">
               <div className="grid grid-cols-2 gap-4 text-sm mb-6">
-                <div><span className="font-semibold">Client ID:</span> {activeOrder.client_id}</div>
+                <div><span className="font-semibold">Client Name:</span> {activeOrderDetails?.client?.company_name || activeOrder.client_id}</div>
                 <div><span className="font-semibold">Date:</span> {new Date(activeOrder.createdAt).toLocaleString()}</div>
                 <div><span className="font-semibold">Status:</span> {activeOrder.status}</div>
                 <div><span className="font-semibold">Payment:</span> {activeOrder.payment_method}</div>

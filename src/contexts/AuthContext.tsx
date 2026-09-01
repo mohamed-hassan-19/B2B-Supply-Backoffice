@@ -2,7 +2,7 @@ import { createContext, useContext, useState, useEffect } from 'react';
 import type { ReactNode } from 'react';
 import { jwtDecode } from 'jwt-decode';
 
-export type Role = 'super_admin' | 'sales' | 'warehouse' | 'finance';
+export type Role = 'super_admin' | 'sales' | 'warehouse' | 'finance' | 'content' | 'operator';
 
 interface JwtPayload {
   email: string;

@@ -143,8 +143,8 @@ export default function ProductsPage() {
     p.category.toLowerCase().includes(searchTerm.toLowerCase())
   ) || [];
 
-  const canEdit = role === 'super_admin' || role === 'sales';
-  const canStock = role === 'super_admin' || role === 'warehouse';
+  const canEdit = role === 'super_admin' || role === 'content';
+  const canStock = role === 'super_admin' || role === 'warehouse' || role === 'content';
 
   return (
     <div className="space-y-6">

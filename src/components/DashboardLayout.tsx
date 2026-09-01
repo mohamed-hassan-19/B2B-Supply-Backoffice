@@ -6,12 +6,14 @@ export default function DashboardLayout() {
   const { role, email, logout } = useAuth();
   const location = useLocation();
 
+  const allRoles = ['super_admin', 'sales', 'warehouse', 'finance', 'content', 'operator'];
+
   const links = [
-    { to: '/products', label: 'Products', icon: <Package className="w-5 h-5 mr-3" />, roles: ['super_admin', 'sales', 'warehouse'] },
-    { to: '/clients', label: 'Clients', icon: <Users className="w-5 h-5 mr-3" />, roles: ['super_admin', 'sales', 'finance'] },
-    { to: '/orders', label: 'Orders', icon: <ShoppingCart className="w-5 h-5 mr-3" />, roles: ['super_admin', 'sales', 'warehouse', 'finance'] },
-    { to: '/quotes', label: 'Quotes', icon: <FileText className="w-5 h-5 mr-3" />, roles: ['super_admin', 'sales'] },
-    { to: '/invoices', label: 'Invoices', icon: <Receipt className="w-5 h-5 mr-3" />, roles: ['super_admin', 'finance'] },
+    { to: '/products', label: 'Products', icon: <Package className="w-5 h-5 mr-3" />, roles: allRoles },
+    { to: '/clients', label: 'Clients', icon: <Users className="w-5 h-5 mr-3" />, roles: allRoles },
+    { to: '/orders', label: 'Orders', icon: <ShoppingCart className="w-5 h-5 mr-3" />, roles: allRoles },
+    { to: '/quotes', label: 'Quotes', icon: <FileText className="w-5 h-5 mr-3" />, roles: allRoles },
+    { to: '/invoices', label: 'Invoices', icon: <Receipt className="w-5 h-5 mr-3" />, roles: allRoles },
     { to: '/analytics', label: 'Analytics', icon: <BarChart className="w-5 h-5 mr-3" />, roles: ['super_admin', 'finance'] },
     { to: '/admin-users', label: 'Admin Users', icon: <Settings className="w-5 h-5 mr-3" />, roles: ['super_admin'] },
   ];
