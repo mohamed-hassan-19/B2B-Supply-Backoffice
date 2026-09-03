@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { api } from '../lib/api';
+import { api, API_BASE_URL } from '../lib/api';
 import { useAuth } from '../contexts/AuthContext';
 import { 
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow 
@@ -379,7 +379,7 @@ export default function ClientsPage() {
                         <span className="text-sm font-medium">{doc.file_name}</span>
                         <div className="flex gap-2">
                           <Button variant="outline" size="sm" asChild>
-                            <a href={`http://localhost:3000${doc.file_url}`} target="_blank" rel="noreferrer">View</a>
+                            <a href={`${API_BASE_URL}${doc.file_url}`} target="_blank" rel="noreferrer">View</a>
                           </Button>
                           {canUpload && (
                             <Button variant="destructive" size="sm" onClick={() => deleteDocMutation.mutate(doc.id)}>Delete</Button>

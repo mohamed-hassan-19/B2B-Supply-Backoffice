@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { api } from '../lib/api';
+import { api, API_BASE_URL } from '../lib/api';
 import { useAuth } from '../contexts/AuthContext';
 import { 
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow 
@@ -436,7 +436,7 @@ export default function ProductsPage() {
               <Label>Product Image</Label>
               {formData.image_url && !selectedFile && (
                 <div className="mb-2">
-                  <img src={formData.image_url.startsWith('http') || formData.image_url.startsWith('/uploads') ? (formData.image_url.startsWith('http') ? formData.image_url : `http://localhost:3000${formData.image_url}`) : formData.image_url} alt="Current" className="h-16 w-16 object-cover rounded" />
+                  <img src={formData.image_url.startsWith('http') || formData.image_url.startsWith('/uploads') ? (formData.image_url.startsWith('http') ? formData.image_url : `${API_BASE_URL}${formData.image_url}`) : formData.image_url} alt="Current" className="h-16 w-16 object-cover rounded" />
                 </div>
               )}
               <Input 

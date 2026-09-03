@@ -64,14 +64,10 @@ export default function InvoicesPage() {
   const handleDownloadPdf = async (id: number) => {
     try {
       setIsGeneratingPdf(id);
-      const res = await api.get(`/api/admin/invoices/${id}/pdf`);
-      let pdfUrl = res.data.pdfUrl;
-      if (pdfUrl) {
-        if (!pdfUrl.startsWith('http')) {
-          pdfUrl = `http://localhost:3000${pdfUrl}`;
-        }
-        window.open(pdfUrl, '_blank');
-      }
+      const res = await api.get(`/api/admin/invoices/${id}/pdf`, { responseType: 'blob' });
+      const blob = new Blob([res.data], { type: 'application/pdf' });
+      const pdfUrl = window.URL.createObjectURL(blob);
+      window.open(pdfUrl, '_blank');
     } catch (err: any) {
       alert(err.response?.data?.message || 'Failed to generate PDF');
     } finally {
