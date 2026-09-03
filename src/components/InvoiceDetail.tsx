@@ -19,7 +19,7 @@ export function InvoiceDetail({ invoiceId, apiPath }: InvoiceDetailProps) {
   if (error) return <div className="p-4 text-red-500">Failed to load invoice.</div>;
   if (!data) return null;
 
-  const { invoice, client, items } = data;
+  const { invoice, client, items, order } = data;
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -97,6 +97,12 @@ export function InvoiceDetail({ invoiceId, apiPath }: InvoiceDetailProps) {
             <span>Subtotal:</span>
             <span>£{Number(invoice.subtotal).toFixed(2)}</span>
           </div>
+          {order && order.discount_amount > 0 && (
+            <div className="flex justify-between text-sm text-red-600">
+              <span>Discount:</span>
+              <span>-£{Number(order.discount_amount).toFixed(2)}</span>
+            </div>
+          )}
           <div className="flex justify-between text-sm">
             <span>Tax ({(Number(invoice.tax_rate) * 100).toFixed(0)}%):</span>
             <span>£{Number(invoice.tax_amount).toFixed(2)}</span>

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../lib/api';
 import { exportToExcel } from '../lib/exportToExcel';
@@ -16,18 +16,52 @@ export default function QuotesPage() {
   const { role } = useAuth();
   const canWrite = role === 'super_admin' || role === 'sales' || role === 'operator';
   const queryClient = useQueryClient();
+  
   const [isDraftModalOpen, setIsDraftModalOpen] = useState(false);
   const [clientId, setClientId] = useState('');
   const [validUntil, setValidUntil] = useState('');
   const [items, setItems] = useState([{ productId: '', quantity: '', quotedPrice: '' }]);
 
-  const { data: quotes, isLoading } = useQuery({
-    queryKey: ['adminQuotes'],
+
+
+  // Group 12 Filters
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
+  const [clientFilter, setClientFilter] = useState('');
+  const [page, setPage] = useState(1);
+
+  useEffect(() => { setPage(1); }, [startDate, endDate, clientFilter]);
+
+  const { data: clientsData } = useQuery({ 
+    queryKey: ['adminClientsList'], 
     queryFn: async () => {
-      const res = await api.get('/api/admin/quotes');
+      const res = await api.get('/api/admin/clients');
+      return res.data.items || res.data;
+    }
+  });
+
+  const { data: productsData } = useQuery({ 
+    queryKey: ['adminProductsList'], 
+    queryFn: async () => {
+      const res = await api.get('/api/admin/products');
+      return res.data.items || res.data;
+    }
+  });
+
+  const { data: quotesData, isLoading } = useQuery({
+    queryKey: ['adminQuotes', startDate, endDate, clientFilter, page],
+    queryFn: async () => {
+      let url = `/api/admin/quotes?page=${page}&`;
+      if (startDate) url += `start_date=${startDate}&`;
+      if (endDate) url += `end_date=${endDate}&`;
+      if (clientFilter) url += `client_id=${clientFilter}&`;
+      const res = await api.get(url);
       return res.data;
     }
   });
+
+  const quotes = quotesData?.items || [];
+  const total = quotesData?.total || 0;
 
   const sendMutation = useMutation({
     mutationFn: (id: number) => api.patch(`/api/admin/quotes/${id}/send`),
@@ -39,6 +73,9 @@ export default function QuotesPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['adminQuotes'] });
       setIsDraftModalOpen(false);
+      setClientId('');
+      setValidUntil('');
+      setItems([{ productId: '', quantity: '', quotedPrice: '' }]);
     }
   });
 
@@ -58,9 +95,17 @@ export default function QuotesPage() {
     draftMutation.mutate(payload);
   };
 
-  const handleExport = () => {
-    const exportData = (quotes || []).map((q: any) => ({
+  const handleExport = async () => {
+    let url = `/api/admin/quotes?export=true&`;
+    if (startDate) url += `start_date=${startDate}&`;
+    if (endDate) url += `end_date=${endDate}&`;
+    if (clientFilter) url += `client_id=${clientFilter}&`;
+    const res = await api.get(url);
+    const allData = res.data.items || res.data;
+
+    const exportData = (allData || []).map((q: any) => ({
       'Quote ID': q.id,
+      'Type': q.parent_quote_id ? 'Revision' : 'New',
       'Client Name': q.Client?.company_name || q.client_id,
       'Date': new Date(q.createdAt).toLocaleDateString(),
       'Valid Until': q.valid_until ? new Date(q.valid_until).toLocaleDateString() : 'No Expiry',
@@ -79,15 +124,34 @@ export default function QuotesPage() {
             Export to Excel
           </Button>
           {canWrite && (
-            <Button onClick={() => {
-              setClientId('');
-              setValidUntil('');
-              setItems([{ productId: '', quantity: '', quotedPrice: '' }]);
-              setIsDraftModalOpen(true);
-            }}>
+            <Button onClick={() => setIsDraftModalOpen(true)}>
               + Draft Quote
             </Button>
           )}
+        </div>
+      </div>
+
+      <div className="flex flex-wrap gap-4 items-end bg-white p-4 rounded-md border shadow-sm">
+        <div className="space-y-1">
+          <Label>Start Date</Label>
+          <Input type="date" className="h-9" value={startDate} onChange={(e: any) => setStartDate(e.target.value)} />
+        </div>
+        <div className="space-y-1">
+          <Label>End Date</Label>
+          <Input type="date" className="h-9" value={endDate} onChange={(e: any) => setEndDate(e.target.value)} />
+        </div>
+        <div className="space-y-1">
+          <Label>Client</Label>
+          <select 
+            className="flex h-9 w-48 rounded-md border border-slate-200 bg-white px-3 py-1 text-sm shadow-sm"
+            value={clientFilter}
+            onChange={(e) => setClientFilter(e.target.value)}
+          >
+            <option value="">All Clients</option>
+            {(clientsData || []).map((c: any) => (
+              <option key={c.id} value={c.id}>{c.company_name}</option>
+            ))}
+          </select>
         </div>
       </div>
 
@@ -96,10 +160,10 @@ export default function QuotesPage() {
           <TableHeader>
             <TableRow>
               <TableHead>Quote ID</TableHead>
-              <TableHead>Client Name</TableHead>
+              <TableHead>Type</TableHead>
+              <TableHead>Client</TableHead>
               <TableHead>Date</TableHead>
               <TableHead>Valid Until</TableHead>
-              <TableHead>Order ID</TableHead>
               <TableHead>Status</TableHead>
               <TableHead className="text-right">Actions</TableHead>
             </TableRow>
@@ -107,59 +171,105 @@ export default function QuotesPage() {
           <TableBody>
             {isLoading ? (
               <TableRow><TableCell colSpan={7} className="text-center py-8">Loading...</TableCell></TableRow>
-            ) : quotes?.map((q: any) => (
+            ) : quotes.map((q: any) => (
               <TableRow key={q.id}>
-                <TableCell>#{q.id}</TableCell>
-                <TableCell>{q.Client?.company_name || q.client_id}</TableCell>
-                <TableCell>{new Date(q.createdAt).toLocaleDateString()}</TableCell>
-                <TableCell>{q.valid_until ? new Date(q.valid_until).toLocaleDateString() : '—'}</TableCell>
-                <TableCell>{q.order_id ? `#${q.order_id}` : '-'}</TableCell>
                 <TableCell>
-                  <Badge variant="outline">{q.status}</Badge>
+                  #{q.id}
+                  {q.parent_quote_id && <div className="text-xs text-gray-500">Rev of #{q.parent_quote_id}</div>}
                 </TableCell>
-                <TableCell className="text-right">
+                <TableCell>
+                  <Badge variant="outline">{q.parent_quote_id ? 'Revision' : 'New'}</Badge>
+                </TableCell>
+                <TableCell className="font-medium">{q.Client?.company_name || `Client #${q.client_id}`}</TableCell>
+                <TableCell>{new Date(q.createdAt).toLocaleDateString()}</TableCell>
+                <TableCell>{q.valid_until ? new Date(q.valid_until).toLocaleDateString() : 'N/A'}</TableCell>
+                <TableCell>
+                  <Badge variant={
+                    q.status === 'accepted' ? 'default' : 
+                    q.status === 'rejected' ? 'destructive' : 
+                    q.status === 'expired' ? 'outline' : 'secondary'
+                  }>
+                    {q.status}
+                  </Badge>
+                </TableCell>
+                <TableCell className="text-right space-x-2">
                   {q.status === 'pending' && canWrite && (
-                    <Button size="sm" onClick={() => sendMutation.mutate(q.id)}>Send to Client</Button>
+                    <Button variant="outline" size="sm" onClick={() => sendMutation.mutate(q.id)}>
+                      Send to Client
+                    </Button>
+                  )}
+                  {q.order_id && (
+                    <span className="text-sm text-gray-500">Order #{q.order_id}</span>
                   )}
                 </TableCell>
               </TableRow>
             ))}
           </TableBody>
         </Table>
+        <div className="flex justify-between items-center p-4 border-t bg-gray-50">
+          <div className="text-sm text-gray-500">
+            Showing {quotes.length} of {total}
+          </div>
+          <div className="flex gap-2">
+            <Button variant="outline" size="sm" disabled={page === 1} onClick={() => setPage(p => p - 1)}>Previous</Button>
+            <Button variant="outline" size="sm" disabled={quotes.length < 20} onClick={() => setPage(p => p + 1)}>Next</Button>
+          </div>
+        </div>
       </div>
 
       <Dialog open={isDraftModalOpen} onOpenChange={setIsDraftModalOpen}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="max-w-xl">
           <DialogHeader>
             <DialogTitle>Draft New Quote</DialogTitle>
           </DialogHeader>
           <form onSubmit={handleDraftSubmit} className="space-y-4 py-4">
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label>Client ID</Label>
-                <Input required type="number" value={clientId} onChange={e => setClientId(e.target.value)} />
+                <Label>Client</Label>
+                <select 
+                  required
+                  className="flex h-10 w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm"
+                  value={clientId}
+                  onChange={e => setClientId(e.target.value)}
+                >
+                  <option value="" disabled>Select Client...</option>
+                  {(clientsData || []).map((c: any) => (
+                    <option key={c.id} value={c.id}>{c.company_name}</option>
+                  ))}
+                </select>
               </div>
               <div className="space-y-2">
                 <Label>Valid Until (Optional)</Label>
                 <Input type="date" value={validUntil} onChange={e => setValidUntil(e.target.value)} />
               </div>
             </div>
-            
-            <div className="pt-4 border-t">
-              <Label className="mb-2 block">Line Items</Label>
+
+            <div className="space-y-4 pt-4 border-t">
+              <Label>Items</Label>
               {items.map((item, idx) => (
-                <div key={idx} className="flex space-x-2 mb-2">
-                  <Input required placeholder="Product ID" type="number" value={item.productId} onChange={e => {
-                    const newItems = [...items];
-                    newItems[idx].productId = e.target.value;
-                    setItems(newItems);
-                  }} />
-                  <Input required placeholder="Qty" type="number" value={item.quantity} onChange={e => {
+                <div key={idx} className="flex gap-2 items-center">
+                  <select 
+                    required
+                    className="flex h-10 w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm"
+                    value={item.productId}
+                    onChange={(e: any) => {
+                      const newItems = [...items];
+                      newItems[idx].productId = e.target.value;
+                      setItems(newItems);
+                    }}
+                  >
+                    <option value="" disabled>Select Item...</option>
+                    {(productsData || []).map((p: any) => (
+                      <option key={p.id} value={p.id}>{p.name}</option>
+                    ))}
+                  </select>
+                  
+                  <Input required placeholder="Qty" type="number" value={item.quantity} onChange={(e: any) => {
                     const newItems = [...items];
                     newItems[idx].quantity = e.target.value;
                     setItems(newItems);
                   }} />
-                  <Input required placeholder="Custom Price (£)" type="number" step="0.01" value={item.quotedPrice} onChange={e => {
+                  <Input required placeholder="Custom Price (£)" type="number" step="0.01" value={item.quotedPrice} onChange={(e: any) => {
                     const newItems = [...items];
                     newItems[idx].quotedPrice = e.target.value;
                     setItems(newItems);
@@ -171,7 +281,9 @@ export default function QuotesPage() {
               </Button>
             </div>
 
-            <Button type="submit" className="w-full mt-4">Draft Quote</Button>
+            <Button type="submit" className="w-full mt-4" disabled={draftMutation.isPending}>
+              {draftMutation.isPending ? 'Drafting...' : 'Draft Quote'}
+            </Button>
           </form>
         </DialogContent>
       </Dialog>

@@ -1,6 +1,6 @@
 import { Outlet, Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { Package, Users, ShoppingCart, FileText, Receipt, BarChart, LogOut, Settings } from 'lucide-react';
+import { Package, Users, ShoppingCart, FileText, Receipt, BarChart, LogOut, Settings, AlertTriangle } from 'lucide-react';
 
 export default function DashboardLayout() {
   const { role, email, logout } = useAuth();
@@ -14,6 +14,7 @@ export default function DashboardLayout() {
     { to: '/orders', label: 'Orders', icon: <ShoppingCart className="w-5 h-5 mr-3" />, roles: allRoles },
     { to: '/quotes', label: 'Quotes', icon: <FileText className="w-5 h-5 mr-3" />, roles: allRoles },
     { to: '/invoices', label: 'Invoices', icon: <Receipt className="w-5 h-5 mr-3" />, roles: allRoles },
+    { to: '/incidents', label: 'Incidents', icon: <AlertTriangle className="w-5 h-5 mr-3" />, roles: allRoles },
     { to: '/analytics', label: 'Analytics', icon: <BarChart className="w-5 h-5 mr-3" />, roles: ['super_admin', 'finance'] },
     { to: '/admin-users', label: 'Admin Users', icon: <Settings className="w-5 h-5 mr-3" />, roles: ['super_admin'] },
   ];

@@ -21,3 +21,21 @@ export function exportToExcel(data: any[], filenamePrefix: string) {
   const filename = `${filenamePrefix}-export-${dateStr}.xlsx`;
   xlsx.writeFile(wb, filename);
 }
+
+export function exportMultipleSheetsToExcel(sheets: {name: string, data: any[]}[], filenamePrefix: string) {
+  const wb = xlsx.utils.book_new();
+
+  for (const sheet of sheets) {
+    const ws = xlsx.utils.json_to_sheet(sheet.data);
+    xlsx.utils.book_append_sheet(wb, ws, sheet.name);
+  }
+
+  const today = new Date();
+  const year = today.getFullYear();
+  const month = String(today.getMonth() + 1).padStart(2, '0');
+  const day = String(today.getDate()).padStart(2, '0');
+  const dateStr = `${year}-${month}-${day}`;
+
+  const filename = `${filenamePrefix}-export-${dateStr}.xlsx`;
+  xlsx.writeFile(wb, filename);
+}

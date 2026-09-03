@@ -8,6 +8,7 @@ import OrdersPage from './pages/Orders';
 import QuotesPage from './pages/Quotes';
 import InvoicesPage from './pages/Invoices';
 import AnalyticsPage from './pages/Analytics';
+import IncidentsPage from './pages/Incidents';
 import AdminUsersPage from './pages/AdminUsers';
 
 function ProtectedRoute({ allowedRoles }: { allowedRoles?: string[] }) {
@@ -48,6 +49,10 @@ function AppContent() {
 
           <Route element={<ProtectedRoute allowedRoles={['super_admin', 'finance']} />}>
             <Route path="/invoices" element={<InvoicesPage />} />
+          </Route>
+
+          <Route element={<ProtectedRoute />}>
+            <Route path="/incidents" element={<IncidentsPage />} />
           </Route>
 
           <Route element={<ProtectedRoute allowedRoles={['super_admin', 'finance']} />}>

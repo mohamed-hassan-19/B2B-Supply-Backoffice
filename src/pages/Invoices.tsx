@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../lib/api';
 import { exportToExcel } from '../lib/exportToExcel';
@@ -10,64 +10,127 @@ import { Badge } from '../components/ui/badge';
 import { Dialog, DialogContent } from '../components/ui/dialog';
 import { InvoiceDetail } from '../components/InvoiceDetail';
 import { useAuth } from '../contexts/AuthContext';
+import { Input } from '../components/ui/input';
+import { Label } from '../components/ui/label';
 
 export default function InvoicesPage() {
   const { role } = useAuth();
-  const canWrite = role === 'super_admin' || role === 'finance';
   const queryClient = useQueryClient();
-  const [selectedInvoiceId, setSelectedInvoiceId] = useState<number | null>(null);
+  const [activeInvoice, setActiveInvoice] = useState<any>(null);
+  const [isViewModalOpen, setIsViewModalOpen] = useState(false);
 
-  const { data: invoices, isLoading } = useQuery({
-    queryKey: ['adminInvoices'],
+  // Group 12 filters
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
+  const [clientFilter, setClientFilter] = useState('');
+  const [page, setPage] = useState(1);
+
+  useEffect(() => { setPage(1); }, [startDate, endDate, clientFilter]);
+
+  const { data: clientsData } = useQuery({ 
+    queryKey: ['adminClientsList'], 
     queryFn: async () => {
-      const res = await api.get('/api/admin/invoices');
+      const res = await api.get('/api/admin/clients');
+      return res.data.items || res.data;
+    }
+  });
+
+  const { data: invoicesData, isLoading } = useQuery({
+    queryKey: ['adminInvoices', startDate, endDate, clientFilter, page],
+    queryFn: async () => {
+      let url = `/api/admin/invoices?page=${page}&`;
+      if (startDate) url += `start_date=${startDate}&`;
+      if (endDate) url += `end_date=${endDate}&`;
+      if (clientFilter) url += `client_id=${clientFilter}&`;
+      const res = await api.get(url);
       return res.data;
     }
   });
 
-  const payMutation = useMutation({
-    mutationFn: (id: number) => api.patch(`/api/admin/invoices/${id}/pay`),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['adminInvoices'] })
-  });
+  const invoices = invoicesData?.items || [];
+  const total = invoicesData?.total || 0;
 
-  const getPdfMutation = useMutation({
-    mutationFn: (id: number) => api.get(`/api/admin/invoices/${id}/pdf`),
-    onSuccess: (res) => {
+  const paymentMutation = useMutation({
+    mutationFn: ({ id }: { id: number }) => 
+      api.patch(`/api/admin/invoices/${id}/pay`),
+    onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['adminInvoices'] });
-      if (res.data?.pdfUrl) {
-        window.open(`http://localhost:3000${res.data.pdfUrl}`, '_blank');
-      }
+      setIsViewModalOpen(false);
     }
   });
 
-  const isOverdue = (dueDateStr: string | null) => {
-    if (!dueDateStr) return false;
-    return new Date(dueDateStr) < new Date();
+  const [isGeneratingPdf, setIsGeneratingPdf] = useState<number | null>(null);
+
+  const handleDownloadPdf = async (id: number) => {
+    try {
+      setIsGeneratingPdf(id);
+      const res = await api.get(`/api/admin/invoices/${id}/pdf`);
+      let pdfUrl = res.data.pdfUrl;
+      if (pdfUrl) {
+        if (!pdfUrl.startsWith('http')) {
+          pdfUrl = `http://localhost:3000${pdfUrl}`;
+        }
+        window.open(pdfUrl, '_blank');
+      }
+    } catch (err: any) {
+      alert(err.response?.data?.message || 'Failed to generate PDF');
+    } finally {
+      setIsGeneratingPdf(null);
+    }
   };
 
-  const handleExport = () => {
-    const exportData = (invoices || []).map((inv: any) => {
-      const overdue = inv.payment_status !== 'paid' && inv.payment_status !== 'void' && isOverdue(inv.due_date);
-      return {
-        'Invoice ID': inv.invoice_number || inv.id,
-        'Order ID': inv.order_id,
-        'Created': new Date(inv.createdAt).toLocaleDateString(),
-        'Due Date': inv.due_date ? new Date(inv.due_date).toLocaleDateString() : 'N/A',
-        'Amount': Number(inv.grand_total || inv.amount),
-        'Status': overdue ? 'OVERDUE' : inv.payment_status
-      };
-    });
+  const handleExport = async () => {
+    let url = `/api/admin/invoices?export=true&`;
+    if (startDate) url += `start_date=${startDate}&`;
+    if (endDate) url += `end_date=${endDate}&`;
+    if (clientFilter) url += `client_id=${clientFilter}&`;
+    const res = await api.get(url);
+    const allData = res.data.items || res.data;
+
+    const exportData = (allData || []).map((i: any) => ({
+      'Invoice #': i.invoice_number,
+      'Order ID': i.order_id,
+      'Client': i.Order?.Client?.company_name || 'N/A',
+      'Date': new Date(i.createdAt).toLocaleDateString(),
+      'Due Date': i.due_date ? new Date(i.due_date).toLocaleDateString() : 'N/A',
+      'Amount': Number(i.grand_total || i.amount),
+      'Status': i.payment_status
+    }));
     exportToExcel(exportData, 'invoices');
   };
+
+  const canMarkPaid = role === 'super_admin' || role === 'finance';
 
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <h2 className="text-xl font-semibold">Invoices</h2>
-        <div className="flex items-center gap-3">
-          <Button variant="outline" onClick={handleExport}>
-            Export to Excel
-          </Button>
+        <Button variant="outline" onClick={handleExport}>
+          Export to Excel
+        </Button>
+      </div>
+
+      <div className="flex flex-wrap gap-4 items-end bg-white p-4 rounded-md border shadow-sm">
+        <div className="space-y-1">
+          <Label>Start Date</Label>
+          <Input type="date" className="h-9" value={startDate} onChange={(e: any) => setStartDate(e.target.value)} />
+        </div>
+        <div className="space-y-1">
+          <Label>End Date</Label>
+          <Input type="date" className="h-9" value={endDate} onChange={(e: any) => setEndDate(e.target.value)} />
+        </div>
+        <div className="space-y-1">
+          <Label>Client</Label>
+          <select 
+            className="flex h-9 w-48 rounded-md border border-slate-200 bg-white px-3 py-1 text-sm shadow-sm"
+            value={clientFilter}
+            onChange={(e) => setClientFilter(e.target.value)}
+          >
+            <option value="">All Clients</option>
+            {(clientsData || []).map((c: any) => (
+              <option key={c.id} value={c.id}>{c.company_name}</option>
+            ))}
+          </select>
         </div>
       </div>
 
@@ -76,8 +139,8 @@ export default function InvoicesPage() {
           <TableHeader>
             <TableRow>
               <TableHead>Invoice #</TableHead>
-              <TableHead>Order ID</TableHead>
-              <TableHead>Created</TableHead>
+              <TableHead>Client</TableHead>
+              <TableHead>Date</TableHead>
               <TableHead>Amount</TableHead>
               <TableHead>Status</TableHead>
               <TableHead className="text-right">Actions</TableHead>
@@ -86,41 +149,73 @@ export default function InvoicesPage() {
           <TableBody>
             {isLoading ? (
               <TableRow><TableCell colSpan={6} className="text-center py-8">Loading...</TableCell></TableRow>
-            ) : invoices?.map((inv: any) => {
-              const overdue = inv.payment_status !== 'paid' && inv.payment_status !== 'void' && isOverdue(inv.due_date);
-              
-              return (
-                <TableRow key={inv.id} className={overdue ? 'bg-red-50' : inv.payment_status === 'void' ? 'opacity-50' : ''}>
-                  <TableCell className="font-medium">{inv.invoice_number || `#${inv.id}`}</TableCell>
-                  <TableCell>#{inv.order_id}</TableCell>
-                  <TableCell>{new Date(inv.createdAt).toLocaleDateString()}</TableCell>
-                  <TableCell>£{Number(inv.grand_total || inv.amount).toFixed(2)}</TableCell>
-                  <TableCell>
-                    <Badge variant={inv.payment_status === 'paid' ? 'secondary' : inv.payment_status === 'void' ? 'outline' : overdue ? 'destructive' : 'outline'}>
-                      {overdue ? 'OVERDUE' : inv.payment_status.toUpperCase()}
-                    </Badge>
-                  </TableCell>
+            ) : invoices.map((i: any) => (
+              <TableRow key={i.id}>
+                <TableCell className="font-medium">{i.invoice_number}</TableCell>
+                <TableCell>{i.Order?.Client?.company_name}</TableCell>
+                <TableCell>{new Date(i.createdAt).toLocaleDateString()}</TableCell>
+                <TableCell>£{Number(i.grand_total || i.amount).toFixed(2)}</TableCell>
+                <TableCell>
+                  <Badge variant={i.payment_status === 'paid' ? 'default' : i.payment_status === 'overdue' ? 'destructive' : 'secondary'}>
+                    {i.payment_status.toUpperCase()}
+                  </Badge>
+                </TableCell>
                   <TableCell className="text-right space-x-2">
-                    <Button variant="outline" size="sm" onClick={() => setSelectedInvoiceId(inv.id)}>
-                      View
+                    <Button variant="outline" size="sm" onClick={() => {
+                      setActiveInvoice(i);
+                      setIsViewModalOpen(true);
+                    }}>
+                      View Details
                     </Button>
-                    <Button variant="outline" size="sm" onClick={() => getPdfMutation.mutate(inv.id)}>
-                      PDF
+                    <Button 
+                      variant="outline" 
+                      size="sm" 
+                      onClick={() => handleDownloadPdf(i.id)}
+                      disabled={isGeneratingPdf === i.id}
+                    >
+                      {isGeneratingPdf === i.id ? 'Generating...' : 'PDF'}
                     </Button>
-                    {inv.payment_status !== 'paid' && inv.payment_status !== 'void' && canWrite && (
-                      <Button size="sm" onClick={() => payMutation.mutate(inv.id)}>Mark Paid</Button>
-                    )}
                   </TableCell>
-                </TableRow>
-              );
-            })}
+              </TableRow>
+            ))}
           </TableBody>
         </Table>
+        <div className="flex justify-between items-center p-4 border-t bg-gray-50">
+          <div className="text-sm text-gray-500">
+            Showing {invoices.length} of {total}
+          </div>
+          <div className="flex gap-2">
+            <Button variant="outline" size="sm" disabled={page === 1} onClick={() => setPage(p => p - 1)}>Previous</Button>
+            <Button variant="outline" size="sm" disabled={invoices.length < 20} onClick={() => setPage(p => p + 1)}>Next</Button>
+          </div>
+        </div>
       </div>
 
-      <Dialog open={!!selectedInvoiceId} onOpenChange={(open) => !open && setSelectedInvoiceId(null)}>
-        <DialogContent className="max-w-3xl">
-          {selectedInvoiceId && <InvoiceDetail invoiceId={selectedInvoiceId} apiPath="/api/admin/invoices" />}
+      <Dialog open={isViewModalOpen} onOpenChange={setIsViewModalOpen}>
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+          {activeInvoice && (
+            <div className="py-4 space-y-6">
+              <InvoiceDetail invoiceId={activeInvoice.id} apiPath="/api/admin/invoices" />
+              
+              <div className="flex justify-end gap-3 pt-4 border-t">
+                {canMarkPaid && activeInvoice.payment_status !== 'paid' && (
+                  <Button 
+                    onClick={() => paymentMutation.mutate({ id: activeInvoice.id })}
+                    disabled={paymentMutation.isPending}
+                  >
+                    Mark as Paid
+                  </Button>
+                )}
+                <Button 
+                  variant="outline" 
+                  onClick={() => handleDownloadPdf(activeInvoice.id)}
+                  disabled={isGeneratingPdf === activeInvoice.id}
+                >
+                  {isGeneratingPdf === activeInvoice.id ? 'Generating...' : 'Download PDF'}
+                </Button>
+              </div>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
     </div>
