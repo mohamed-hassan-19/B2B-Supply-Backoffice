@@ -11,6 +11,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../components/
 import { Label } from '../components/ui/label';
 import { Input } from '../components/ui/input';
 import { exportToExcel, exportMultipleSheetsToExcel } from '../lib/exportToExcel';
+import { Star } from 'lucide-react';
 
 function ClientOrdersHistory({ clientId }: { clientId: number }) {
   const { data: ordersData, isLoading } = useQuery({
@@ -199,6 +200,11 @@ export default function ClientsPage() {
     }
   });
 
+  const priorityMutation = useMutation({
+    mutationFn: ({ id, is_priority }: { id: number, is_priority: boolean }) => api.patch(`/api/admin/clients/${id}/priority`, { is_priority }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['adminClients'] })
+  });
+
   const handleExport = async () => {
     let url = `/api/admin/clients?export=true&`;
     if (startDate) url += `start_date=${startDate}&`;
@@ -312,6 +318,16 @@ export default function ClientsPage() {
                   )}
                 </TableCell>
                 <TableCell className="text-right space-x-2">
+                  {role === 'super_admin' && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => priorityMutation.mutate({ id: c.id, is_priority: !c.is_priority })}
+                      className={`px-2 ${c.is_priority ? 'text-yellow-500 hover:text-yellow-600' : 'text-gray-400 hover:text-gray-500'}`}
+                    >
+                      <Star className="h-4 w-4" fill={c.is_priority ? "currentColor" : "none"} />
+                    </Button>
+                  )}
                   <Button variant="outline" size="sm" onClick={() => {
                     setActiveClient(c);
                     setIsViewModalOpen(true);

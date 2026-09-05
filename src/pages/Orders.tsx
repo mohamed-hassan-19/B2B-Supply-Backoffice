@@ -78,6 +78,8 @@ export default function OrdersPage() {
     }
   });
 
+  const [discountInput, setDiscountInput] = useState('');
+
   const cancelMutation = useMutation({
     mutationFn: ({ id, reason }: { id: number, reason: string }) => 
       api.patch(`/api/admin/orders/${id}/cancel`, { reason }),
@@ -86,6 +88,32 @@ export default function OrdersPage() {
       setIsCancelModalOpen(false);
       setCancelReason('');
       setActiveOrder(null);
+    }
+  });
+
+  const discountMutation = useMutation({
+    mutationFn: ({ id, discount_percentage }: { id: number, discount_percentage: number }) =>
+      api.patch(`/api/admin/orders/${id}/discount`, { discount_percentage }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['adminOrders'] });
+      queryClient.invalidateQueries({ queryKey: ['adminOrderDetails'] });
+      alert('Discount applied successfully!');
+      setDiscountInput('');
+    },
+    onError: (err: any) => {
+      alert(err.response?.data?.message || 'Failed to apply discount');
+    }
+  });
+
+  const reviseMutation = useMutation({
+    mutationFn: (id: number) => api.post(`/api/admin/orders/${id}/revise`),
+    onSuccess: (res) => {
+      queryClient.invalidateQueries({ queryKey: ['adminOrders'] });
+      queryClient.invalidateQueries({ queryKey: ['adminOrderDetails'] });
+      alert('Revision quote created successfully. Quote ID: ' + res.data.quote_id);
+    },
+    onError: (err: any) => {
+      alert(err.response?.data?.message || 'Failed to create revision quote');
     }
   });
 
@@ -229,6 +257,37 @@ export default function OrdersPage() {
                   <div><span className="font-semibold text-gray-500 block text-xs uppercase tracking-wider mb-1">Date</span> {new Date(activeOrderDetails.order.createdAt).toLocaleString()}</div>
                   <div><span className="font-semibold text-gray-500 block text-xs uppercase tracking-wider mb-1">Status</span> <Badge variant={getStatusBadge(activeOrderDetails.order.status)}>{activeOrderDetails.order.status.toUpperCase()}</Badge></div>
                   <div><span className="font-semibold text-gray-500 block text-xs uppercase tracking-wider mb-1">Total</span> £{Number(activeOrderDetails.order.total_amount).toFixed(2)}</div>
+                  <div><span className="font-semibold text-gray-500 block text-xs uppercase tracking-wider mb-1">Discount</span> {activeOrderDetails.order.discount_percentage ? `${Number(activeOrderDetails.order.discount_percentage).toFixed(2)}%` : '0%'} (£{Number(activeOrderDetails.order.discount_amount || 0).toFixed(2)})</div>
+                  
+                  {(role === 'super_admin' || role === 'sales' || role === 'operator') && (activeOrderDetails.order.status === 'pending' || activeOrderDetails.order.status === 'approved') && (
+                    <div className="col-span-2 border-t pt-2 mt-2">
+                      <span className="font-semibold text-gray-500 block text-xs uppercase tracking-wider mb-2">Apply Discount Percentage</span>
+                      <div className="flex gap-2">
+                        <Input
+                          type="number"
+                          min="0"
+                          max="100"
+                          step="0.01"
+                          placeholder="Percentage (e.g. 10)"
+                          value={discountInput}
+                          onChange={(e) => setDiscountInput(e.target.value)}
+                          className="w-48"
+                        />
+                        <Button
+                          variant="secondary"
+                          onClick={() => {
+                            if (activeOrder && discountInput !== '') {
+                              discountMutation.mutate({ id: activeOrder.id, discount_percentage: parseFloat(discountInput) });
+                            }
+                          }}
+                          disabled={discountMutation.isPending}
+                        >
+                          Apply
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+
                   <div className="col-span-2"><span className="font-semibold text-gray-500 block text-xs uppercase tracking-wider mb-1">Shipping Address</span> {activeOrderDetails.order.shipping_address}</div>
                   {activeOrderDetails.order.notes && (
                     <div className="col-span-2"><span className="font-semibold text-gray-500 block text-xs uppercase tracking-wider mb-1">Notes</span> {activeOrderDetails.order.notes}</div>
@@ -262,6 +321,11 @@ export default function OrdersPage() {
                 </div>
 
                 <div className="flex gap-2 justify-end pt-4 border-t">
+                  {(role === 'super_admin' || role === 'sales' || role === 'operator') && (activeOrderDetails.order.status === 'pending' || activeOrderDetails.order.status === 'approved') && (
+                    <Button variant="outline" onClick={() => reviseMutation.mutate(activeOrder.id)} disabled={reviseMutation.isPending}>
+                      Propose Revision
+                    </Button>
+                  )}
                   {canApprove && activeOrderDetails.order.status === 'pending' && (
                     <Button onClick={() => statusMutation.mutate({ id: activeOrder.id, status: 'approved' })}>
                       Approve Order

@@ -22,6 +22,10 @@ export default function QuotesPage() {
   const [validUntil, setValidUntil] = useState('');
   const [items, setItems] = useState([{ productId: '', quantity: '', quotedPrice: '' }]);
 
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [editingQuote, setEditingQuote] = useState<any>(null);
+  const [discountPercentage, setDiscountPercentage] = useState('');
+
 
 
   // Group 12 Filters
@@ -79,6 +83,15 @@ export default function QuotesPage() {
     }
   });
 
+  const updateQuoteMutation = useMutation({
+    mutationFn: ({ id, data }: { id: number; data: any }) => api.patch(`/api/admin/quotes/${id}`, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['adminQuotes'] });
+      setIsEditModalOpen(false);
+      setEditingQuote(null);
+    }
+  });
+
   const handleDraftSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     const payload: any = {
@@ -93,6 +106,29 @@ export default function QuotesPage() {
       payload.valid_until = new Date(validUntil).toISOString();
     }
     draftMutation.mutate(payload);
+  };
+
+  const handleEditSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingQuote) return;
+    const payload: any = {
+      items: items.map(i => ({
+        productId: parseInt(i.productId),
+        quantity: parseInt(i.quantity),
+        quotedPrice: parseFloat(i.quotedPrice)
+      }))
+    };
+    if (validUntil) {
+      payload.valid_until = new Date(validUntil).toISOString();
+    } else {
+      payload.valid_until = null;
+    }
+    if (discountPercentage !== '') {
+      payload.discount_percentage = parseFloat(discountPercentage);
+    } else {
+      payload.discount_percentage = null;
+    }
+    updateQuoteMutation.mutate({ id: editingQuote.id, data: payload });
   };
 
   const handleExport = async () => {
@@ -193,6 +229,26 @@ export default function QuotesPage() {
                   </Badge>
                 </TableCell>
                 <TableCell className="text-right space-x-2">
+                  {(q.status === 'pending' || q.status === 'sent') && canWrite && (
+                    <Button variant="outline" size="sm" onClick={() => {
+                      setEditingQuote(q);
+                      setClientId(q.client_id.toString());
+                      setValidUntil(q.valid_until ? new Date(q.valid_until).toISOString().split('T')[0] : '');
+                      setDiscountPercentage(q.discount_percentage ? q.discount_percentage.toString() : '');
+                      if (q.QuoteItems && q.QuoteItems.length > 0) {
+                        setItems(q.QuoteItems.map((qi: any) => ({
+                          productId: qi.product_id.toString(),
+                          quantity: qi.requested_quantity.toString(),
+                          quotedPrice: qi.quoted_price.toString()
+                        })));
+                      } else {
+                        setItems([{ productId: '', quantity: '', quotedPrice: '' }]);
+                      }
+                      setIsEditModalOpen(true);
+                    }}>
+                      Edit Quote
+                    </Button>
+                  )}
                   {q.status === 'pending' && canWrite && (
                     <Button variant="outline" size="sm" onClick={() => sendMutation.mutate(q.id)}>
                       Send to Client
@@ -216,6 +272,100 @@ export default function QuotesPage() {
           </div>
         </div>
       </div>
+
+      <Dialog open={isEditModalOpen} onOpenChange={setIsEditModalOpen}>
+        <DialogContent className="max-w-xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Edit Quote #{editingQuote?.id}</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handleEditSubmit} className="space-y-4 py-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Valid Until</Label>
+                <Input type="date" value={validUntil} onChange={e => setValidUntil(e.target.value)} />
+              </div>
+              <div className="space-y-2">
+                <Label>Discount Percentage</Label>
+                <Input type="number" min="0" max="100" step="0.01" placeholder="e.g. 10" value={discountPercentage} onChange={e => setDiscountPercentage(e.target.value)} />
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              <div className="flex justify-between items-center">
+                <Label>Items</Label>
+                <Button type="button" variant="outline" size="sm" onClick={() => setItems([...items, { productId: '', quantity: '', quotedPrice: '' }])}>
+                  Add Item
+                </Button>
+              </div>
+              {items.map((item, index) => (
+                <div key={index} className="flex gap-2 items-start bg-gray-50 p-2 rounded-md">
+                  <div className="flex-1 space-y-2">
+                    <select
+                      required
+                      className="flex h-10 w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm"
+                      value={item.productId}
+                      onChange={e => {
+                        const newItems = [...items];
+                        newItems[index].productId = e.target.value;
+                        setItems(newItems);
+                      }}
+                    >
+                      <option value="" disabled>Select Product...</option>
+                      {(productsData?.items || []).map((p: any) => (
+                        <option key={p.id} value={p.id}>{p.name} (Stock: {p.stock_level}) - £{p.price}</option>
+                      ))}
+                    </select>
+                    <div className="flex gap-2">
+                      <Input
+                        required
+                        type="number"
+                        min="1"
+                        placeholder="Qty"
+                        value={item.quantity}
+                        onChange={e => {
+                          const newItems = [...items];
+                          newItems[index].quantity = e.target.value;
+                          setItems(newItems);
+                        }}
+                      />
+                      <Input
+                        required
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        placeholder="Quoted Unit Price"
+                        value={item.quotedPrice}
+                        onChange={e => {
+                          const newItems = [...items];
+                          newItems[index].quotedPrice = e.target.value;
+                          setItems(newItems);
+                        }}
+                      />
+                    </div>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="destructive"
+                    size="icon"
+                    disabled={items.length === 1}
+                    onClick={() => {
+                      const newItems = [...items];
+                      newItems.splice(index, 1);
+                      setItems(newItems);
+                    }}
+                  >
+                    X
+                  </Button>
+                </div>
+              ))}
+            </div>
+
+            <Button type="submit" className="w-full mt-4" disabled={updateQuoteMutation.isPending}>
+              {updateQuoteMutation.isPending ? 'Saving...' : 'Save Changes'}
+            </Button>
+          </form>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={isDraftModalOpen} onOpenChange={setIsDraftModalOpen}>
         <DialogContent className="max-w-xl">
