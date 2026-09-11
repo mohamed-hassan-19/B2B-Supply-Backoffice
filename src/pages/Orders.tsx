@@ -21,6 +21,12 @@ export default function OrdersPage() {
   const [isViewModalOpen, setIsViewModalOpen] = useState(false);
   const [isCancelModalOpen, setIsCancelModalOpen] = useState(false);
   const [cancelReason, setCancelReason] = useState('');
+  const [cancelComment, setCancelComment] = useState('');
+
+  const [isCancelItemModalOpen, setIsCancelItemModalOpen] = useState(false);
+  const [itemCancelReason, setItemCancelReason] = useState('');
+  const [itemCancelComment, setItemCancelComment] = useState('');
+  const [activeItemToCancel, setActiveItemToCancel] = useState<any>(null);
 
   // Group 12 filters
   const [startDate, setStartDate] = useState('');
@@ -79,6 +85,8 @@ export default function OrdersPage() {
   });
 
   const [discountInput, setDiscountInput] = useState('');
+  const [itemDiscounts, setItemDiscounts] = useState<Record<number, string>>({});
+  const canWrite = role === 'super_admin';
 
   const cancelMutation = useMutation({
     mutationFn: ({ id, reason }: { id: number, reason: string }) => 
@@ -88,6 +96,18 @@ export default function OrdersPage() {
       setIsCancelModalOpen(false);
       setCancelReason('');
       setActiveOrder(null);
+    }
+  });
+
+  const cancelItemMutation = useMutation({
+    mutationFn: ({ id, itemId, reason }: { id: number, itemId: number, reason: string }) => 
+      api.patch(`/api/admin/orders/${id}/items/${itemId}/cancel`, { reason }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['adminOrders'] });
+      queryClient.invalidateQueries({ queryKey: ['adminOrderDetails'] });
+      setIsCancelItemModalOpen(false);
+      setItemCancelReason('');
+      setActiveItemToCancel(null);
     }
   });
 
@@ -102,6 +122,18 @@ export default function OrdersPage() {
     },
     onError: (err: any) => {
       alert(err.response?.data?.message || 'Failed to apply discount');
+    }
+  });
+
+  const itemDiscountMutation = useMutation({
+    mutationFn: ({ id, itemId, discount_percentage }: { id: number, itemId: number, discount_percentage: number }) =>
+      api.patch(`/api/admin/orders/${id}/items/${itemId}/discount`, { discount_percentage }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['adminOrders'] });
+      queryClient.invalidateQueries({ queryKey: ['adminOrderDetails'] });
+    },
+    onError: (err: any) => {
+      alert(err.response?.data?.message || 'Failed to apply item discount');
     }
   });
 
@@ -301,21 +333,102 @@ export default function OrdersPage() {
                   <Table>
                     <TableHeader>
                       <TableRow>
+                        <TableHead>Product ID</TableHead>
                         <TableHead>Product</TableHead>
                         <TableHead className="text-right">Quantity</TableHead>
                         <TableHead className="text-right">Unit Price</TableHead>
+                        <TableHead className="text-right">Discount %</TableHead>
                         <TableHead className="text-right">Total</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {activeOrderDetails.items?.map((item: any) => (
-                        <TableRow key={item.id}>
-                          <TableCell>{item.Product?.name || `Product #${item.product_id}`}</TableCell>
-                          <TableCell className="text-right">{item.quantity}</TableCell>
-                          <TableCell className="text-right">£{Number(item.unit_price).toFixed(2)}</TableCell>
-                          <TableCell className="text-right font-medium">£{Number(item.total_price).toFixed(2)}</TableCell>
+                      {activeOrderDetails.items?.map((item: any) => {
+                        const isDozen = item.purchase_unit === 'dozen' && item.dozen_size_at_purchase;
+                        const displayQty = isDozen 
+                          ? `${item.quantity / item.dozen_size_at_purchase} dozens (${item.quantity} units)`
+                          : item.quantity;
+                        const displayPrice = isDozen
+                          ? `£${Number(item.unit_price * item.dozen_size_at_purchase).toFixed(2)} / dz`
+                          : `£${Number(item.unit_price).toFixed(2)}`;
+
+                        const itemTotal = Number(item.unit_price) * item.quantity;
+                        const discountedTotal = itemTotal - (Number(item.discount_amount) || 0);
+                        const hasDiscount = Number(item.discount_amount) > 0;
+                        
+                        const showDiscountInput = canWrite && (activeOrderDetails.order.status === 'pending' || activeOrderDetails.order.status === 'approved') && !item.is_cancelled;
+                        const showCancelItemButton = canWrite && (activeOrderDetails.order.status === 'pending' || activeOrderDetails.order.status === 'approved') && !item.is_cancelled;
+
+                        return (
+                        <TableRow key={item.id} className={item.is_cancelled ? 'opacity-50' : ''}>
+                          <TableCell>#{item.product_id}</TableCell>
+                          <TableCell>
+                            <span className={item.is_cancelled ? 'line-through text-gray-500' : ''}>
+                              {item.product_name || `Product #${item.product_id}`}
+                            </span>
+                            {item.is_cancelled && <span className="ml-1">(Cancelled)</span>}
+                          </TableCell>
+                          <TableCell className="text-right">{displayQty}</TableCell>
+                          <TableCell className="text-right">{displayPrice}</TableCell>
+                          <TableCell className="text-right">
+                            {showDiscountInput ? (
+                              <div className="flex justify-end gap-2 items-center">
+                                <Input 
+                                  type="number" 
+                                  className="w-20 h-8 text-right" 
+                                  min="0" max="100" step="0.01"
+                                  value={itemDiscounts[item.id] !== undefined ? itemDiscounts[item.id] : (item.discount_percentage || '')}
+                                  onChange={(e) => setItemDiscounts({ ...itemDiscounts, [item.id]: e.target.value })}
+                                />
+                                <Button 
+                                  size="sm" 
+                                  variant="secondary" 
+                                  className="h-8 px-2"
+                                  onClick={() => {
+                                    const val = itemDiscounts[item.id];
+                                    if (val !== undefined && val !== '') {
+                                      itemDiscountMutation.mutate({ 
+                                        id: activeOrder.id, 
+                                        itemId: item.id, 
+                                        discount_percentage: parseFloat(val) 
+                                      });
+                                    }
+                                  }}
+                                  disabled={itemDiscountMutation.isPending}
+                                >
+                                  Save
+                                </Button>
+                                {showCancelItemButton && (
+                                  <Button 
+                                    size="sm" 
+                                    variant="destructive" 
+                                    className="h-8 px-2"
+                                    onClick={() => {
+                                      setActiveItemToCancel(item);
+                                      setIsCancelItemModalOpen(true);
+                                    }}
+                                  >
+                                    Cancel Item
+                                  </Button>
+                                )}
+                              </div>
+                            ) : (
+                              item.discount_percentage && !item.is_cancelled ? `${Number(item.discount_percentage).toFixed(2)}%` : '-'
+                            )}
+                          </TableCell>
+                          <TableCell className="text-right font-medium">
+                            {item.is_cancelled ? (
+                              <span className="line-through text-gray-500 text-xs">£{itemTotal.toFixed(2)}</span>
+                            ) : hasDiscount ? (
+                              <div className="flex flex-col items-end">
+                                <span className="line-through text-gray-500 text-xs">£{itemTotal.toFixed(2)}</span>
+                                <span className="font-bold text-green-600">£{discountedTotal.toFixed(2)}</span>
+                              </div>
+                            ) : (
+                              `£${discountedTotal.toFixed(2)}`
+                            )}
+                          </TableCell>
                         </TableRow>
-                      ))}
+                      )})}
                     </TableBody>
                   </Table>
                 </div>
@@ -396,20 +509,97 @@ export default function OrdersPage() {
           <div className="space-y-4 py-4">
             <div className="space-y-2">
               <Label>Cancellation Reason</Label>
-              <Input 
+              <select 
+                className="flex h-9 w-full rounded-md border border-slate-200 bg-white px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-slate-950"
                 value={cancelReason}
                 onChange={(e) => setCancelReason(e.target.value)}
-                placeholder="Briefly explain why this order is being cancelled"
+              >
+                <option value="" disabled>Select a reason...</option>
+                <option value="Customer requested cancellation">Customer requested cancellation</option>
+                <option value="Product no longer required">Product no longer required</option>
+                <option value="Product out of stock">Product out of stock</option>
+                <option value="Wrong product ordered">Wrong product ordered</option>
+                <option value="Wrong quantity ordered">Wrong quantity ordered</option>
+                <option value="Duplicate item/order">Duplicate item/order</option>
+                <option value="Pricing issue">Pricing issue</option>
+                <option value="Customer changed requirements">Customer changed requirements</option>
+                <option value="Order entry mistake">Order entry mistake</option>
+                <option value="Other">Other</option>
+              </select>
+            </div>
+            <div className="space-y-2">
+              <Label>Additional Comment {cancelReason !== 'Other' && <span className="text-gray-400 font-normal">(Optional)</span>}</Label>
+              <Input 
+                value={cancelComment}
+                onChange={(e) => setCancelComment(e.target.value)}
+                placeholder="Provide more details..."
               />
             </div>
             <div className="flex gap-2 justify-end">
               <Button variant="outline" onClick={() => setIsCancelModalOpen(false)}>Back</Button>
               <Button 
                 variant="destructive" 
-                disabled={!cancelReason.trim()}
+                disabled={!cancelReason || (cancelReason === 'Other' && !cancelComment.trim())}
                 onClick={() => {
                   if (activeOrder) {
-                    cancelMutation.mutate({ id: activeOrder.id, reason: cancelReason });
+                    const finalReason = cancelComment.trim() ? `${cancelReason} - ${cancelComment.trim()}` : cancelReason;
+                    cancelMutation.mutate({ id: activeOrder.id, reason: finalReason });
+                  }
+                }}
+              >
+                Confirm Cancellation
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={isCancelItemModalOpen} onOpenChange={setIsCancelItemModalOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Cancel Item</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <p className="text-sm text-gray-500">
+              Are you sure you want to cancel {activeItemToCancel?.product_name || `Product #${activeItemToCancel?.product_id}`}?
+            </p>
+            <div className="space-y-2">
+              <Label>Cancellation Reason</Label>
+              <select 
+                className="flex h-9 w-full rounded-md border border-slate-200 bg-white px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-slate-950"
+                value={itemCancelReason}
+                onChange={(e) => setItemCancelReason(e.target.value)}
+              >
+                <option value="" disabled>Select a reason...</option>
+                <option value="Customer requested cancellation">Customer requested cancellation</option>
+                <option value="Product no longer required">Product no longer required</option>
+                <option value="Product out of stock">Product out of stock</option>
+                <option value="Wrong product ordered">Wrong product ordered</option>
+                <option value="Wrong quantity ordered">Wrong quantity ordered</option>
+                <option value="Duplicate item/order">Duplicate item/order</option>
+                <option value="Pricing issue">Pricing issue</option>
+                <option value="Customer changed requirements">Customer changed requirements</option>
+                <option value="Order entry mistake">Order entry mistake</option>
+                <option value="Other">Other</option>
+              </select>
+            </div>
+            <div className="space-y-2">
+              <Label>Additional Comment {itemCancelReason !== 'Other' && <span className="text-gray-400 font-normal">(Optional)</span>}</Label>
+              <Input 
+                value={itemCancelComment}
+                onChange={(e) => setItemCancelComment(e.target.value)}
+                placeholder="Provide more details..."
+              />
+            </div>
+            <div className="flex gap-2 justify-end">
+              <Button variant="outline" onClick={() => setIsCancelItemModalOpen(false)}>Back</Button>
+              <Button 
+                variant="destructive" 
+                disabled={!itemCancelReason || (itemCancelReason === 'Other' && !itemCancelComment.trim()) || cancelItemMutation.isPending}
+                onClick={() => {
+                  if (activeOrder && activeItemToCancel) {
+                    const finalReason = itemCancelComment.trim() ? `${itemCancelReason} - ${itemCancelComment.trim()}` : itemCancelReason;
+                    cancelItemMutation.mutate({ id: activeOrder.id, itemId: activeItemToCancel.id, reason: finalReason });
                   }
                 }}
               >

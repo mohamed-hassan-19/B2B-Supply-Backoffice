@@ -72,6 +72,7 @@ export function InvoiceDetail({ invoiceId, apiPath }: InvoiceDetailProps) {
         <table className="w-full caption-bottom text-sm border-b">
           <thead className="[&_tr]:border-b border-gray-200 text-gray-500">
             <tr className="border-b transition-colors hover:bg-muted/50 data-[state=selected]:bg-muted">
+              <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground">ID</th>
               <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground">Item</th>
               <th className="h-12 px-4 align-middle font-medium text-muted-foreground text-right">Qty</th>
               <th className="h-12 px-4 align-middle font-medium text-muted-foreground text-right">Unit Price</th>
@@ -79,14 +80,39 @@ export function InvoiceDetail({ invoiceId, apiPath }: InvoiceDetailProps) {
             </tr>
           </thead>
           <tbody className="[&_tr:last-child]:border-0 border-gray-200 text-gray-900">
-            {items.map((item: any) => (
-              <tr key={item.id} className="border-b transition-colors hover:bg-muted/50 data-[state=selected]:bg-muted">
-                <td className="p-4 align-middle">{item.product_name}</td>
-                <td className="p-4 align-middle text-right">{item.quantity}</td>
-                <td className="p-4 align-middle text-right">£{Number(item.unit_price).toFixed(2)}</td>
-                <td className="p-4 align-middle text-right">£{(Number(item.unit_price) * item.quantity).toFixed(2)}</td>
-              </tr>
-            ))}
+              {items.map((item: any) => {
+                const isDozen = item.purchase_unit === 'dozen' && item.dozen_size_at_purchase;
+                const displayQty = isDozen 
+                  ? `${item.quantity / item.dozen_size_at_purchase} dozens (${item.quantity} units)`
+                  : item.quantity;
+                const displayPrice = isDozen
+                  ? `EGP ${Number(item.unit_price * item.dozen_size_at_purchase).toFixed(2)} / dz`
+                  : `EGP ${Number(item.unit_price).toFixed(2)}`;
+                
+                const itemTotal = Number(item.unit_price) * item.quantity;
+                const lineTotal = itemTotal - (Number(item.discount_amount) || 0);
+
+                return (
+                <tr key={item.id} className={`border-b transition-colors hover:bg-muted/50 data-[state=selected]:bg-muted ${item.is_cancelled ? 'opacity-50 text-gray-500' : ''}`}>
+                  <td className="p-4 align-middle">#{item.product_id}</td>
+                  <td className="p-4 align-middle">
+                    <span className={item.is_cancelled ? 'line-through' : ''}>
+                      {item.product_name}
+                    </span>
+                    {item.is_cancelled && <span className="ml-1">(Cancelled)</span>}
+                    {item.discount_percentage > 0 && !item.is_cancelled && <span className="ml-2 text-xs text-red-600">({Number(item.discount_percentage)}% off)</span>}
+                  </td>
+                  <td className="p-4 align-middle text-right">{displayQty}</td>
+                  <td className="p-4 align-middle text-right">{displayPrice}</td>
+                  <td className="p-4 align-middle text-right">
+                    {item.is_cancelled ? (
+                      <span className="line-through text-gray-400 text-xs">EGP {lineTotal.toFixed(2)}</span>
+                    ) : (
+                      `EGP ${lineTotal.toFixed(2)}`
+                    )}
+                  </td>
+                </tr>
+              )})}
           </tbody>
         </table>
       </div>

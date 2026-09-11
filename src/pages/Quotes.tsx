@@ -20,7 +20,7 @@ export default function QuotesPage() {
   const [isDraftModalOpen, setIsDraftModalOpen] = useState(false);
   const [clientId, setClientId] = useState('');
   const [validUntil, setValidUntil] = useState('');
-  const [items, setItems] = useState([{ productId: '', quantity: '', quotedPrice: '' }]);
+  const [items, setItems] = useState<{ productId: string; quantity: string; quotedPrice: string; purchaseUnit: 'single' | 'dozen'; dozenSize: number | null; discountPercentage: string }[]>([{ productId: '', quantity: '', quotedPrice: '', purchaseUnit: 'single', dozenSize: null, discountPercentage: '' }]);
 
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [editingQuote, setEditingQuote] = useState<any>(null);
@@ -79,7 +79,7 @@ export default function QuotesPage() {
       setIsDraftModalOpen(false);
       setClientId('');
       setValidUntil('');
-      setItems([{ productId: '', quantity: '', quotedPrice: '' }]);
+      setItems([{ productId: '', quantity: '', quotedPrice: '', purchaseUnit: 'single', dozenSize: null, discountPercentage: '' }]);
     }
   });
 
@@ -99,7 +99,10 @@ export default function QuotesPage() {
       items: items.map(i => ({
         productId: parseInt(i.productId),
         quantity: parseInt(i.quantity),
-        quotedPrice: parseFloat(i.quotedPrice)
+        quotedPrice: parseFloat(i.quotedPrice),
+        purchase_unit: i.purchaseUnit,
+        dozen_size_at_purchase: i.dozenSize,
+        discount_percentage: i.discountPercentage ? parseFloat(i.discountPercentage) : null
       }))
     };
     if (validUntil) {
@@ -115,7 +118,10 @@ export default function QuotesPage() {
       items: items.map(i => ({
         productId: parseInt(i.productId),
         quantity: parseInt(i.quantity),
-        quotedPrice: parseFloat(i.quotedPrice)
+        quotedPrice: parseFloat(i.quotedPrice),
+        purchase_unit: i.purchaseUnit,
+        dozen_size_at_purchase: i.dozenSize,
+        discount_percentage: i.discountPercentage ? parseFloat(i.discountPercentage) : null
       }))
     };
     if (validUntil) {
@@ -239,10 +245,13 @@ export default function QuotesPage() {
                         setItems(q.QuoteItems.map((qi: any) => ({
                           productId: qi.product_id.toString(),
                           quantity: qi.requested_quantity.toString(),
-                          quotedPrice: qi.quoted_price.toString()
+                          quotedPrice: qi.quoted_price.toString(),
+                          purchaseUnit: qi.purchase_unit || 'single',
+                          dozenSize: qi.dozen_size_at_purchase || null,
+                          discountPercentage: qi.discount_percentage ? qi.discount_percentage.toString() : ''
                         })));
                       } else {
-                        setItems([{ productId: '', quantity: '', quotedPrice: '' }]);
+                        setItems([{ productId: '', quantity: '', quotedPrice: '', purchaseUnit: 'single', dozenSize: null, discountPercentage: '' }]);
                       }
                       setIsEditModalOpen(true);
                     }}>
@@ -293,11 +302,19 @@ export default function QuotesPage() {
             <div className="space-y-4">
               <div className="flex justify-between items-center">
                 <Label>Items</Label>
-                <Button type="button" variant="outline" size="sm" onClick={() => setItems([...items, { productId: '', quantity: '', quotedPrice: '' }])}>
+                <Button type="button" variant="outline" size="sm" onClick={() => setItems([...items, { productId: '', quantity: '', quotedPrice: '', purchaseUnit: 'single', dozenSize: null, discountPercentage: '' }])}>
                   Add Item
                 </Button>
               </div>
-              {items.map((item, index) => (
+              {items.map((item, index) => {
+                const displayQuantity = item.purchaseUnit === 'dozen' && item.dozenSize 
+                  ? (parseFloat(item.quantity || '0') / item.dozenSize).toString() 
+                  : item.quantity;
+                const displayPrice = item.purchaseUnit === 'dozen' && item.dozenSize 
+                  ? (parseFloat(item.quotedPrice || '0') * item.dozenSize).toString() 
+                  : item.quotedPrice;
+
+                return (
                 <div key={index} className="flex gap-2 items-start bg-gray-50 p-2 rounded-md">
                   <div className="flex-1 space-y-2">
                     <select
@@ -307,6 +324,9 @@ export default function QuotesPage() {
                       onChange={e => {
                         const newItems = [...items];
                         newItems[index].productId = e.target.value;
+                        const p = (productsData?.items || productsData || []).find((p: any) => p.id === parseInt(e.target.value));
+                        newItems[index].dozenSize = p?.dozen_quantity ? parseInt(p.dozen_quantity) : null;
+                        if (!newItems[index].dozenSize) newItems[index].purchaseUnit = 'single';
                         setItems(newItems);
                       }}
                     >
@@ -315,16 +335,26 @@ export default function QuotesPage() {
                         <option key={p.id} value={p.id}>{p.name} (Stock: {p.stock_level}) - £{p.price}</option>
                       ))}
                     </select>
-                    <div className="flex gap-2">
+                    <div className="flex gap-2 items-center">
                       <Input
                         required
                         type="number"
-                        min="1"
-                        placeholder="Qty"
-                        value={item.quantity}
+                        min="0"
+                        step="any"
+                        placeholder={item.purchaseUnit === 'dozen' ? "Qty (Dozens)" : "Qty"}
+                        value={displayQuantity === 'NaN' ? '' : displayQuantity}
                         onChange={e => {
                           const newItems = [...items];
-                          newItems[index].quantity = e.target.value;
+                          const val = parseFloat(e.target.value);
+                          if (!isNaN(val)) {
+                            if (item.purchaseUnit === 'dozen' && item.dozenSize) {
+                               newItems[index].quantity = (val * item.dozenSize).toString();
+                            } else {
+                               newItems[index].quantity = val.toString();
+                            }
+                          } else {
+                             newItems[index].quantity = '';
+                          }
                           setItems(newItems);
                         }}
                       />
@@ -332,15 +362,52 @@ export default function QuotesPage() {
                         required
                         type="number"
                         min="0"
-                        step="0.01"
-                        placeholder="Quoted Unit Price"
-                        value={item.quotedPrice}
+                        step="any"
+                        placeholder={item.purchaseUnit === 'dozen' ? "Quoted Dozen Price (£)" : "Quoted Unit Price (£)"}
+                        value={displayPrice === 'NaN' ? '' : displayPrice}
                         onChange={e => {
                           const newItems = [...items];
-                          newItems[index].quotedPrice = e.target.value;
+                          const val = parseFloat(e.target.value);
+                          if (!isNaN(val)) {
+                            if (item.purchaseUnit === 'dozen' && item.dozenSize) {
+                               newItems[index].quotedPrice = (val / item.dozenSize).toString();
+                            } else {
+                               newItems[index].quotedPrice = val.toString();
+                            }
+                          } else {
+                             newItems[index].quotedPrice = '';
+                          }
                           setItems(newItems);
                         }}
                       />
+                      <Input
+                        type="number"
+                        min="0"
+                        max="100"
+                        step="any"
+                        placeholder="Discount %"
+                        value={item.discountPercentage}
+                        onChange={e => {
+                          const newItems = [...items];
+                          newItems[index].discountPercentage = e.target.value;
+                          setItems(newItems);
+                        }}
+                      />
+                      {item.dozenSize && (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="whitespace-nowrap"
+                          onClick={() => {
+                            const newItems = [...items];
+                            newItems[index].purchaseUnit = item.purchaseUnit === 'single' ? 'dozen' : 'single';
+                            setItems(newItems);
+                          }}
+                        >
+                          Buy by: {item.purchaseUnit === 'single' ? 'Single' : 'Dozen'}
+                        </Button>
+                      )}
                     </div>
                   </div>
                   <Button
@@ -357,7 +424,7 @@ export default function QuotesPage() {
                     X
                   </Button>
                 </div>
-              ))}
+              )})}
             </div>
 
             <Button type="submit" className="w-full mt-4" disabled={updateQuoteMutation.isPending}>
@@ -396,37 +463,112 @@ export default function QuotesPage() {
 
             <div className="space-y-4 pt-4 border-t">
               <Label>Items</Label>
-              {items.map((item, idx) => (
-                <div key={idx} className="flex gap-2 items-center">
+              {items.map((item, idx) => {
+                const displayQuantity = item.purchaseUnit === 'dozen' && item.dozenSize 
+                  ? (parseFloat(item.quantity || '0') / item.dozenSize).toString() 
+                  : item.quantity;
+                const displayPrice = item.purchaseUnit === 'dozen' && item.dozenSize 
+                  ? (parseFloat(item.quotedPrice || '0') * item.dozenSize).toString() 
+                  : item.quotedPrice;
+
+                return (
+                <div key={idx} className="flex gap-2 items-center flex-wrap">
                   <select 
                     required
-                    className="flex h-10 w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm"
+                    className="flex h-10 w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm md:w-1/3"
                     value={item.productId}
                     onChange={(e: any) => {
                       const newItems = [...items];
                       newItems[idx].productId = e.target.value;
+                      const p = (productsData?.items || productsData || []).find((p: any) => p.id === parseInt(e.target.value));
+                      newItems[idx].dozenSize = p?.dozen_quantity ? parseInt(p.dozen_quantity) : null;
+                      if (!newItems[idx].dozenSize) newItems[idx].purchaseUnit = 'single';
                       setItems(newItems);
                     }}
                   >
                     <option value="" disabled>Select Item...</option>
-                    {(productsData || []).map((p: any) => (
+                    {(productsData?.items || productsData || []).map((p: any) => (
                       <option key={p.id} value={p.id}>{p.name}</option>
                     ))}
                   </select>
                   
-                  <Input required placeholder="Qty" type="number" value={item.quantity} onChange={(e: any) => {
+                  <Input required placeholder={item.purchaseUnit === 'dozen' ? "Qty (Dozens)" : "Qty"} type="number" min="0" step="any" value={displayQuantity === 'NaN' ? '' : displayQuantity} onChange={(e: any) => {
                     const newItems = [...items];
-                    newItems[idx].quantity = e.target.value;
+                    const val = parseFloat(e.target.value);
+                    if (!isNaN(val)) {
+                      if (item.purchaseUnit === 'dozen' && item.dozenSize) {
+                         newItems[idx].quantity = (val * item.dozenSize).toString();
+                      } else {
+                         newItems[idx].quantity = val.toString();
+                      }
+                    } else {
+                       newItems[idx].quantity = '';
+                    }
                     setItems(newItems);
-                  }} />
-                  <Input required placeholder="Custom Price (£)" type="number" step="0.01" value={item.quotedPrice} onChange={(e: any) => {
+                  }} className="md:flex-1" />
+                  
+                  <Input required placeholder={item.purchaseUnit === 'dozen' ? "Custom Dozen Price (£)" : "Custom Price (£)"} type="number" min="0" step="any" value={displayPrice === 'NaN' ? '' : displayPrice} onChange={(e: any) => {
                     const newItems = [...items];
-                    newItems[idx].quotedPrice = e.target.value;
+                    const val = parseFloat(e.target.value);
+                    if (!isNaN(val)) {
+                      if (item.purchaseUnit === 'dozen' && item.dozenSize) {
+                         newItems[idx].quotedPrice = (val / item.dozenSize).toString();
+                      } else {
+                         newItems[idx].quotedPrice = val.toString();
+                      }
+                    } else {
+                       newItems[idx].quotedPrice = '';
+                    }
                     setItems(newItems);
-                  }} />
+                  }} className="md:flex-1" />
+                  
+                  <Input 
+                    placeholder="Discount %" 
+                    type="number" 
+                    min="0" 
+                    max="100" 
+                    step="any" 
+                    value={item.discountPercentage} 
+                    onChange={(e: any) => {
+                      const newItems = [...items];
+                      newItems[idx].discountPercentage = e.target.value;
+                      setItems(newItems);
+                    }} 
+                    className="md:w-24" 
+                  />
+
+                  {item.dozenSize && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="whitespace-nowrap"
+                      onClick={() => {
+                        const newItems = [...items];
+                        newItems[idx].purchaseUnit = item.purchaseUnit === 'single' ? 'dozen' : 'single';
+                        setItems(newItems);
+                      }}
+                    >
+                      Buy by: {item.purchaseUnit === 'single' ? 'Single' : 'Dozen'}
+                    </Button>
+                  )}
+                  
+                  <Button
+                    type="button"
+                    variant="destructive"
+                    size="icon"
+                    disabled={items.length === 1}
+                    onClick={() => {
+                      const newItems = [...items];
+                      newItems.splice(idx, 1);
+                      setItems(newItems);
+                    }}
+                  >
+                    X
+                  </Button>
                 </div>
-              ))}
-              <Button type="button" variant="outline" size="sm" onClick={() => setItems([...items, { productId: '', quantity: '', quotedPrice: '' }])}>
+              )})}
+              <Button type="button" variant="outline" size="sm" onClick={() => setItems([...items, { productId: '', quantity: '', quotedPrice: '', purchaseUnit: 'single', dozenSize: null, discountPercentage: '' }])}>
                 + Add Item
               </Button>
             </div>

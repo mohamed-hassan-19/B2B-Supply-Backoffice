@@ -30,7 +30,9 @@ export default function ProductsPage() {
     original_price: '',
     image_url: '',
     stock_level: '',
-    low_stock_threshold: ''
+    low_stock_threshold: '',
+    dozen_quantity: '',
+    dozen_price: ''
   });
 
   const [categoryData, setCategoryData] = useState({ name: '', description: '' });
@@ -47,12 +49,24 @@ export default function ProductsPage() {
 
   useEffect(() => { setPage(1); }, [startDate, endDate, categoryFilter, showLowStockOnly]);
 
-  const { data: categoriesData } = useQuery({
-    queryKey: ['adminCategories'],
+  const { data: allCategories } = useQuery({
+    queryKey: ['adminCategories', 'all'],
     queryFn: async () => {
-      const res = await api.get('/api/admin/categories');
+      const res = await api.get('/api/admin/categories?include_inactive=true');
       return res.data;
     }
+  });
+
+  const categoriesData = allCategories?.filter((c: any) => c.is_active) || [];
+
+  const deactivateCatMutation = useMutation({
+    mutationFn: (id: number) => api.patch(`/api/admin/categories/${id}/deactivate`),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['adminCategories'] })
+  });
+
+  const activateCatMutation = useMutation({
+    mutationFn: (id: number) => api.patch(`/api/admin/categories/${id}/activate`),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['adminCategories'] })
   });
 
   const { data: productsData, isLoading } = useQuery({
@@ -108,13 +122,15 @@ export default function ProductsPage() {
         original_price: product.original_price || '',
         image_url: (product.images && product.images.length > 0) ? product.images[0] : '',
         stock_level: product.stock_level?.toString() || '0',
-        low_stock_threshold: product.low_stock_threshold?.toString() || '0'
+        low_stock_threshold: product.low_stock_threshold?.toString() || '0',
+        dozen_quantity: product.dozen_quantity?.toString() || '',
+        dozen_price: product.dozen_price?.toString() || ''
       });
     } else {
       setActiveProduct(null);
       setFormData({ 
         name: '', description: '', category_id: '', price: '', original_price: '', 
-        image_url: '', stock_level: '0', low_stock_threshold: '0' 
+        image_url: '', stock_level: '0', low_stock_threshold: '0', dozen_quantity: '', dozen_price: '' 
       });
     }
     setSelectedFile(null);
@@ -160,6 +176,18 @@ export default function ProductsPage() {
         payload.original_price = parseFloat(data.original_price);
       } else {
         payload.original_price = null;
+      }
+
+      if (formData.dozen_quantity !== '') {
+        payload.dozen_quantity = parseInt(formData.dozen_quantity.toString());
+      } else {
+        payload.dozen_quantity = null;
+      }
+
+      if (formData.dozen_price !== '') {
+        payload.dozen_price = parseFloat(formData.dozen_price.toString());
+      } else {
+        payload.dozen_price = null;
       }
 
       if (activeProduct) {
@@ -208,6 +236,11 @@ export default function ProductsPage() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['adminProducts'] })
   });
 
+  const activateMutation = useMutation({
+    mutationFn: (id: number) => api.patch(`/api/admin/products/${id}/activate`),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['adminProducts'] })
+  });
+
   const handleEditSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     editMutation.mutate(formData);
@@ -240,7 +273,7 @@ export default function ProductsPage() {
           {canEdit && (
             <>
               <Button variant="outline" onClick={() => setIsCategoryModalOpen(true)}>
-                + New Category
+                Manage Categories
               </Button>
               <Button onClick={() => openEdit()}>
                 + New Product
@@ -345,6 +378,11 @@ export default function ProductsPage() {
                       Deactivate
                     </Button>
                   )}
+                  {canEdit && !p.is_active && (
+                    <Button variant="outline" className="text-green-600 border-green-600 hover:bg-green-50" size="sm" onClick={() => activateMutation.mutate(p.id)}>
+                      Activate
+                    </Button>
+                  )}
                 </TableCell>
               </TableRow>
             ))}
@@ -432,6 +470,18 @@ export default function ProductsPage() {
                 <Input type="number" min="0" value={formData.low_stock_threshold} onChange={e => setFormData({...formData, low_stock_threshold: e.target.value})} />
               </div>
             </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Items per Dozen (Optional)</Label>
+                <Input type="number" min="1" value={formData.dozen_quantity} onChange={e => setFormData({...formData, dozen_quantity: e.target.value})} />
+              </div>
+              <div className="space-y-2">
+                <Label>Dozen Price (Optional)</Label>
+                <Input type="number" step="0.01" min="0" value={formData.dozen_price} onChange={e => setFormData({...formData, dozen_price: e.target.value})} />
+              </div>
+            </div>
+
             <div className="space-y-2">
               <Label>Product Image</Label>
               {formData.image_url && !selectedFile && (
@@ -450,6 +500,14 @@ export default function ProductsPage() {
                 }} 
               />
             </div>
+
+            {formData.price && formData.dozen_quantity && formData.dozen_price && 
+             Math.abs(parseFloat(formData.dozen_price.toString()) - parseFloat(formData.price.toString()) * parseFloat(formData.dozen_quantity.toString())) > 0.01 && (
+              <div className="text-sm text-amber-600 bg-amber-50 p-2 rounded">
+                Dozen price differs from per-item price × dozen quantity (EGP {parseFloat(formData.price.toString()) * parseFloat(formData.dozen_quantity.toString())}) — this is fine if intentional
+              </div>
+            )}
+
             <Button type="submit" className="w-full" disabled={editMutation.isPending}>
               {editMutation.isPending ? 'Saving...' : 'Save Product'}
             </Button>
@@ -457,25 +515,73 @@ export default function ProductsPage() {
         </DialogContent>
       </Dialog>
 
-      {/* New Category Modal */}
+      {/* Manage Category Modal */}
       <Dialog open={isCategoryModalOpen} onOpenChange={setIsCategoryModalOpen}>
-        <DialogContent>
+        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Create New Category</DialogTitle>
+            <DialogTitle>Manage Categories</DialogTitle>
           </DialogHeader>
-          <form onSubmit={handleCategorySubmit} className="space-y-4 py-4">
-            <div className="space-y-2">
-              <Label>Category Name</Label>
-              <Input required value={categoryData.name} onChange={e => setCategoryData({...categoryData, name: e.target.value})} />
-            </div>
-            <div className="space-y-2">
-              <Label>Description (Optional)</Label>
-              <Input value={categoryData.description} onChange={e => setCategoryData({...categoryData, description: e.target.value})} />
-            </div>
-            <Button type="submit" className="w-full" disabled={categoryMutation.isPending}>
-              {categoryMutation.isPending ? 'Creating...' : 'Create Category'}
-            </Button>
-          </form>
+          
+          <div className="space-y-4 mb-6">
+            <h3 className="text-sm font-semibold">Existing Categories</h3>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Name</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {allCategories?.map((cat: any) => (
+                  <TableRow key={cat.id}>
+                    <TableCell>{cat.name}</TableCell>
+                    <TableCell>
+                      {cat.is_active ? (
+                        <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">Active</Badge>
+                      ) : (
+                        <Badge variant="outline" className="bg-gray-50 text-gray-700 border-gray-200">Inactive</Badge>
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      {canEdit && cat.is_active && (
+                        <Button variant="destructive" size="sm" onClick={() => deactivateCatMutation.mutate(cat.id)}>
+                          Deactivate
+                        </Button>
+                      )}
+                      {canEdit && !cat.is_active && (
+                        <Button variant="outline" className="text-green-600 border-green-600 hover:bg-green-50" size="sm" onClick={() => activateCatMutation.mutate(cat.id)}>
+                          Activate
+                        </Button>
+                      )}
+                    </TableCell>
+                  </TableRow>
+                ))}
+                {!allCategories?.length && (
+                  <TableRow>
+                    <TableCell colSpan={3} className="text-center text-gray-500 py-4">No categories found.</TableCell>
+                  </TableRow>
+                )}
+              </TableBody>
+            </Table>
+          </div>
+
+          <div className="border-t pt-4">
+            <h3 className="text-sm font-semibold mb-4">Create New Category</h3>
+            <form onSubmit={handleCategorySubmit} className="space-y-4">
+              <div className="space-y-2">
+                <Label>Category Name</Label>
+                <Input required value={categoryData.name} onChange={e => setCategoryData({...categoryData, name: e.target.value})} />
+              </div>
+              <div className="space-y-2">
+                <Label>Description (Optional)</Label>
+                <Input value={categoryData.description} onChange={e => setCategoryData({...categoryData, description: e.target.value})} />
+              </div>
+              <Button type="submit" className="w-full" disabled={categoryMutation.isPending}>
+                {categoryMutation.isPending ? 'Creating...' : 'Create Category'}
+              </Button>
+            </form>
+          </div>
         </DialogContent>
       </Dialog>
     </div>
