@@ -129,6 +129,8 @@ export default function ClientsPage() {
   const [isViewModalOpen, setIsViewModalOpen] = useState(false);
   const [isCreditModalOpen, setIsCreditModalOpen] = useState(false);
   const [creditData, setCreditData] = useState({ credit_limit: '', credit_terms: '' });
+  const [monthlyAverage, setMonthlyAverage] = useState<string>('');
+  const [isEditingMonthly, setIsEditingMonthly] = useState(false);
   const [documentFile, setDocumentFile] = useState<File | null>(null);
 
   const [startDate, setStartDate] = useState('');
@@ -173,6 +175,16 @@ export default function ClientsPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['adminClients'] });
       setIsCreditModalOpen(false);
+    }
+  });
+
+  const monthlyMutation = useMutation({
+    mutationFn: (amount: string | null) => 
+      api.patch(`/api/admin/clients/${activeClient.id}/monthly-average`, { monthly_average_order_amount: amount ? parseFloat(amount) : null }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['adminClientDetails'] });
+      queryClient.invalidateQueries({ queryKey: ['adminClients'] });
+      setIsEditingMonthly(false);
     }
   });
 
@@ -250,6 +262,7 @@ export default function ClientsPage() {
 
   const canApprove = role === 'super_admin' || role === 'sales';
   const canCredit = role === 'super_admin' || role === 'finance';
+  const canEditMonthly = role === 'super_admin' || role === 'sales' || role === 'finance';
   const canUpload = role === 'super_admin' || role === 'sales';
 
   return (
@@ -331,6 +344,8 @@ export default function ClientsPage() {
                   <Button variant="outline" size="sm" onClick={() => {
                     setActiveClient(c);
                     setIsViewModalOpen(true);
+                    setMonthlyAverage(c.monthly_average_order_amount?.toString() || '');
+                    setIsEditingMonthly(false);
                   }}>
                     View Details
                   </Button>
@@ -383,7 +398,24 @@ export default function ClientsPage() {
                 <div><span className="font-semibold">Status:</span> {activeClientDetails.status}</div>
                 <div><span className="font-semibold">Payment:</span> {activeClientDetails.payment_method || 'N/A'}</div>
                 <div><span className="font-semibold">Credit Limit:</span> £{activeClientDetails.credit_limit || 0}</div>
-                <div><span className="font-semibold">Terms:</span> {activeClientDetails.credit_terms || 0} Days</div>
+                                <div><span className="font-semibold">Terms:</span> {activeClientDetails.credit_terms || 0} Days</div>
+                <div className="col-span-2 flex items-center gap-2">
+                  <span className="font-semibold">Monthly Avg Order Amount:</span> 
+                  {!isEditingMonthly ? (
+                    <>
+                      <span>{activeClientDetails.monthly_average_order_amount !== null ? `£${activeClientDetails.monthly_average_order_amount}` : 'N/A'}</span>
+                      {canEditMonthly && (
+                        <Button variant="ghost" size="sm" onClick={() => setIsEditingMonthly(true)}>Edit</Button>
+                      )}
+                    </>
+                  ) : (
+                    <div className="flex items-center gap-2">
+                      <Input type="number" step="0.01" min="0" value={monthlyAverage} onChange={e => setMonthlyAverage(e.target.value)} className="h-8 w-32" />
+                      <Button size="sm" onClick={() => monthlyMutation.mutate(monthlyAverage)} disabled={monthlyMutation.isPending}>Save</Button>
+                      <Button variant="ghost" size="sm" onClick={() => setIsEditingMonthly(false)}>Cancel</Button>
+                    </div>
+                  )}
+                </div>
               </div>
 
               <div className="pt-4 border-t">

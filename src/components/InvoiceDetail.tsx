@@ -37,9 +37,14 @@ export function InvoiceDetail({ invoiceId, apiPath }: InvoiceDetailProps) {
           <p className="text-sm text-gray-500 mt-1">
             Invoice Number: {invoice.invoice_number || `#${invoice.id}`}
           </p>
-          <p className="text-sm text-gray-500">
-            Date: {new Date(invoice.createdAt).toLocaleDateString()}
+          <p className="text-sm text-gray-500 mt-1">
+            Issued: {new Date(invoice.createdAt).toLocaleDateString()}
           </p>
+          {invoice.due_date && (
+            <p className="text-sm text-gray-500 mt-1">
+              Due: {new Date(invoice.due_date).toLocaleDateString()}
+            </p>
+          )}
           {invoice.sales_order_reference && (
             <p className="text-sm text-gray-500">
               Sales Order Ref: {invoice.sales_order_reference}
@@ -49,10 +54,15 @@ export function InvoiceDetail({ invoiceId, apiPath }: InvoiceDetailProps) {
             Payment Method: {invoice.payment_method === 'COD' ? 'Cash on Delivery' : invoice.payment_method}
           </p>
         </div>
-        <div className="text-right">
-          <span className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 ${getStatusColor(invoice.payment_status)}`}>
+        <div className="text-right flex flex-col items-end gap-1">
+          <span className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 ${(invoice.payment_status === 'overdue' || (invoice.payment_status === 'pending' && invoice.days_remaining !== null && invoice.days_remaining < 0)) ? 'border-transparent bg-destructive text-destructive-foreground hover:bg-destructive/80' : getStatusColor(invoice.payment_status)}`}>
             {invoice.payment_status.toUpperCase()}
           </span>
+          {invoice.payment_status === 'pending' && invoice.days_remaining !== undefined && invoice.days_remaining !== null && (
+            <span className={`text-xs font-semibold ${invoice.days_remaining < 0 ? 'text-red-600' : 'text-gray-500'}`}>
+              {invoice.days_remaining < 0 ? `${Math.abs(invoice.days_remaining)} days overdue` : `${invoice.days_remaining} days remaining`}
+            </span>
+          )}
         </div>
       </div>
 

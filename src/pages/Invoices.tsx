@@ -152,9 +152,16 @@ export default function InvoicesPage() {
                 <TableCell>{new Date(i.createdAt).toLocaleDateString()}</TableCell>
                 <TableCell>£{Number(i.grand_total || i.amount).toFixed(2)}</TableCell>
                 <TableCell>
-                  <Badge variant={i.payment_status === 'paid' ? 'default' : i.payment_status === 'overdue' ? 'destructive' : 'secondary'}>
-                    {i.payment_status.toUpperCase()}
-                  </Badge>
+                  <div className="flex flex-col items-start gap-1">
+                    <Badge variant={i.payment_status === 'paid' ? 'default' : (i.payment_status === 'overdue' || (i.payment_status === 'pending' && i.days_remaining !== null && i.days_remaining < 0)) ? 'destructive' : 'secondary'}>
+                      {i.payment_status.toUpperCase()}
+                    </Badge>
+                    {i.payment_status === 'pending' && i.days_remaining !== undefined && i.days_remaining !== null && (
+                      <span className={`text-xs font-semibold ${i.days_remaining < 0 ? 'text-red-600' : 'text-gray-500'}`}>
+                        {i.days_remaining < 0 ? `${Math.abs(i.days_remaining)} days overdue` : `${i.days_remaining} days remaining`}
+                      </span>
+                    )}
+                  </div>
                 </TableCell>
                   <TableCell className="text-right space-x-2">
                     <Button variant="outline" size="sm" onClick={() => {
