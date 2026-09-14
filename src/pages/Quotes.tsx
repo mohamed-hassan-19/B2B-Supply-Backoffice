@@ -11,8 +11,10 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../components/
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import { useAuth } from '../contexts/AuthContext';
+import { useNavigate } from 'react-router-dom';
 
 export default function QuotesPage() {
+  const navigate = useNavigate();
   const { role } = useAuth();
   const canWrite = role === 'super_admin' || role === 'sales' || role === 'operator';
   const queryClient = useQueryClient();
@@ -32,9 +34,10 @@ export default function QuotesPage() {
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [clientFilter, setClientFilter] = useState('');
+  const [typeFilter, setTypeFilter] = useState('all');
   const [page, setPage] = useState(1);
 
-  useEffect(() => { setPage(1); }, [startDate, endDate, clientFilter]);
+  useEffect(() => { setPage(1); }, [startDate, endDate, clientFilter, typeFilter]);
 
   const { data: clientsData } = useQuery({ 
     queryKey: ['adminClientsList'], 
@@ -53,12 +56,13 @@ export default function QuotesPage() {
   });
 
   const { data: quotesData, isLoading } = useQuery({
-    queryKey: ['adminQuotes', startDate, endDate, clientFilter, page],
+    queryKey: ['adminQuotes', startDate, endDate, clientFilter, page, typeFilter],
     queryFn: async () => {
       let url = `/api/admin/quotes?page=${page}&`;
       if (startDate) url += `start_date=${startDate}&`;
       if (endDate) url += `end_date=${endDate}&`;
       if (clientFilter) url += `client_id=${clientFilter}&`;
+      if (typeFilter !== 'all') url += `quote_type=${typeFilter}&`;
       const res = await api.get(url);
       return res.data;
     }
@@ -142,6 +146,7 @@ export default function QuotesPage() {
     if (startDate) url += `start_date=${startDate}&`;
     if (endDate) url += `end_date=${endDate}&`;
     if (clientFilter) url += `client_id=${clientFilter}&`;
+      if (typeFilter !== 'all') url += `quote_type=${typeFilter}&`;
     const res = await api.get(url);
     const allData = res.data.items || res.data;
 
@@ -194,10 +199,23 @@ export default function QuotesPage() {
               <option key={c.id} value={c.id}>{c.company_name}</option>
             ))}
           </select>
+          </div>
+          <div className="space-y-1">
+            <Label>Type</Label>
+            <select 
+              className="flex h-9 w-48 rounded-md border border-slate-200 bg-white px-3 py-1 text-sm shadow-sm"
+              value={typeFilter}
+              onChange={(e) => setTypeFilter(e.target.value)}
+            >
+              <option value="all">All Types</option>
+              <option value="new">New Quote</option>
+              <option value="revision">Order Update</option>
+              <option value="custom">Custom Request</option>
+            </select>
+          </div>
         </div>
-      </div>
 
-      <div className="bg-white rounded-md border shadow-sm overflow-hidden">
+        <div className="bg-white rounded-md border shadow-sm overflow-hidden">
         <Table>
           <TableHeader>
             <TableRow>
@@ -214,14 +232,22 @@ export default function QuotesPage() {
             {isLoading ? (
               <TableRow><TableCell colSpan={7} className="text-center py-8">Loading...</TableCell></TableRow>
             ) : quotes.map((q: any) => (
-              <TableRow key={q.id}>
+              <TableRow key={q.id} className="cursor-pointer hover:bg-gray-50" onClick={() => navigate(`/quotes/${q.id}`)}>
                 <TableCell>
                   #{q.id}
                   {q.parent_quote_id && <div className="text-xs text-gray-500">Rev of #{q.parent_quote_id}</div>}
                 </TableCell>
                 <TableCell>
-                  <Badge variant="outline">{q.parent_quote_id ? 'Revision' : 'New'}</Badge>
-                </TableCell>
+                    {q.is_custom_request ? (
+                      <Badge variant="outline">Custom Request</Badge>
+                    ) : q.related_order_id ? (
+                      <Badge variant="outline">
+                        Order Update <span className="ml-1 text-xs text-gray-500">(Order #{q.related_order_id})</span>
+                      </Badge>
+                    ) : (
+                      <Badge variant="outline">New Quote</Badge>
+                    )}
+                  </TableCell>
                 <TableCell className="font-medium">{q.Client?.company_name || `Client #${q.client_id}`}</TableCell>
                 <TableCell>{new Date(q.createdAt).toLocaleDateString()}</TableCell>
                 <TableCell>{q.valid_until ? new Date(q.valid_until).toLocaleDateString() : 'N/A'}</TableCell>
@@ -234,39 +260,16 @@ export default function QuotesPage() {
                     {q.status}
                   </Badge>
                 </TableCell>
-                <TableCell className="text-right space-x-2">
-                  {(q.status === 'pending' || q.status === 'sent') && canWrite && (
-                    <Button variant="outline" size="sm" onClick={() => {
-                      setEditingQuote(q);
-                      setClientId(q.client_id.toString());
-                      setValidUntil(q.valid_until ? new Date(q.valid_until).toISOString().split('T')[0] : '');
-                      setDiscountPercentage(q.discount_percentage ? q.discount_percentage.toString() : '');
-                      if (q.QuoteItems && q.QuoteItems.length > 0) {
-                        setItems(q.QuoteItems.map((qi: any) => ({
-                          productId: qi.product_id.toString(),
-                          quantity: qi.requested_quantity.toString(),
-                          quotedPrice: qi.quoted_price.toString(),
-                          purchaseUnit: qi.purchase_unit || 'single',
-                          dozenSize: qi.dozen_size_at_purchase || null,
-                          discountPercentage: qi.discount_percentage ? qi.discount_percentage.toString() : ''
-                        })));
-                      } else {
-                        setItems([{ productId: '', quantity: '', quotedPrice: '', purchaseUnit: 'single', dozenSize: null, discountPercentage: '' }]);
-                      }
-                      setIsEditModalOpen(true);
-                    }}>
-                      Edit Quote
+                <TableCell className="text-right space-x-2" onClick={e => e.stopPropagation()}>
+                    <Button variant="outline" size="sm" onClick={() => navigate(`/quotes/${q.id}`)}>
+                      View Details
                     </Button>
-                  )}
-                  {q.status === 'pending' && canWrite && (
-                    <Button variant="outline" size="sm" onClick={() => sendMutation.mutate(q.id)}>
-                      Send to Client
-                    </Button>
-                  )}
-                  {q.order_id && (
-                    <span className="text-sm text-gray-500">Order #{q.order_id}</span>
-                  )}
-                </TableCell>
+                    {q.status === 'pending' && canWrite && (
+                      <Button variant="outline" size="sm" onClick={() => sendMutation.mutate(q.id)}>
+                        Send to Client
+                      </Button>
+                    )}
+                  </TableCell>
               </TableRow>
             ))}
           </TableBody>

@@ -6,6 +6,7 @@ import ProductsPage from './pages/Products';
 import ClientsPage from './pages/Clients';
 import OrdersPage from './pages/Orders';
 import QuotesPage from './pages/Quotes';
+import QuoteDetail from './pages/QuoteDetail';
 import InvoicesPage from './pages/Invoices';
 import AnalyticsPage from './pages/Analytics';
 import IncidentsPage from './pages/Incidents';
@@ -45,6 +46,7 @@ function AppContent() {
 
           <Route element={<ProtectedRoute allowedRoles={['super_admin', 'sales']} />}>
             <Route path="/quotes" element={<QuotesPage />} />
+            <Route path="/quotes/:id" element={<QuoteDetail />} />
           </Route>
 
           <Route element={<ProtectedRoute allowedRoles={['super_admin', 'finance']} />}>
