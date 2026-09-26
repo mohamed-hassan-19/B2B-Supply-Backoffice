@@ -11,6 +11,7 @@ import InvoicesPage from './pages/Invoices';
 import AnalyticsPage from './pages/Analytics';
 import IncidentsPage from './pages/Incidents';
 import AdminUsersPage from './pages/AdminUsers';
+import PackingMaterialsPage from './pages/PackingMaterials';
 
 function ProtectedRoute({ allowedRoles }: { allowedRoles?: string[] }) {
   const { token, role } = useAuth();
@@ -35,6 +36,10 @@ function AppContent() {
           
           <Route element={<ProtectedRoute allowedRoles={['super_admin', 'sales', 'warehouse']} />}>
             <Route path="/products" element={<ProductsPage />} />
+          </Route>
+
+          <Route element={<ProtectedRoute allowedRoles={['super_admin', 'warehouse']} />}>
+            <Route path="/packing-materials" element={<PackingMaterialsPage />} />
           </Route>
 
           <Route element={<ProtectedRoute allowedRoles={['super_admin', 'sales', 'finance']} />}>

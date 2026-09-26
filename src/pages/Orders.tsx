@@ -36,6 +36,65 @@ export default function OrdersPage() {
 
   useEffect(() => { setPage(1); }, [startDate, endDate, clientFilter]);
 
+const [isManualOrderOpen, setIsManualOrderOpen] = useState(false);
+const [moClientId, setMoClientId] = useState('');
+const [moItems, setMoItems] = useState<any[]>([{ productId: '', customItemName: '', customItemDescription: '', quantity: '', unitPrice: '', purchaseUnit: 'single', dozenSize: null, discountPercentage: '', isCustom: false }]);
+const [moPaymentMethod, setMoPaymentMethod] = useState<'COD' | 'Credit'>('COD');
+const [moDiscountPercentage, setMoDiscountPercentage] = useState('');
+const [moSource, setMoSource] = useState('whatsapp');
+const [moNotes, setMoNotes] = useState('');
+const [moConsent, setMoConsent] = useState(false);
+
+const manualOrderMutation = useMutation({
+  mutationFn: async () => {
+    const payload = {
+      clientId: parseInt(moClientId),
+      paymentMethod: moPaymentMethod,
+      discountPercentage: moDiscountPercentage ? parseFloat(moDiscountPercentage) : undefined,
+      source: moSource,
+      notes: moNotes,
+      items: moItems.map(i => {
+        let qty = parseFloat(i.quantity);
+        if (i.purchaseUnit === 'dozen' && i.dozenSize) qty = qty * i.dozenSize;
+        if (i.isCustom) {
+          return {
+            customItemName: i.customItemName,
+            customItemDescription: i.customItemDescription,
+            quantity: qty,
+            purchaseUnit: i.purchaseUnit,
+            unitPrice: i.unitPrice ? parseFloat(i.unitPrice) : 0,
+            discountPercentage: i.discountPercentage ? parseFloat(i.discountPercentage) : undefined
+          };
+        } else {
+          return {
+            productId: parseInt(i.productId),
+            quantity: qty,
+            purchaseUnit: i.purchaseUnit,
+            discountPercentage: i.discountPercentage ? parseFloat(i.discountPercentage) : undefined
+          };
+        }
+      })
+    };
+    return api.post('/api/admin/orders/create-manual', payload);
+  },
+  onSuccess: () => {
+    queryClient.invalidateQueries({ queryKey: ['adminOrders'] });
+    setIsManualOrderOpen(false);
+    setMoItems([{ productId: '', customItemName: '', customItemDescription: '', quantity: '', unitPrice: '', purchaseUnit: 'single', dozenSize: null, discountPercentage: '', isCustom: false }]);
+    setMoClientId('');
+    setMoNotes('');
+    setMoConsent(false);
+  }
+});
+
+  const { data: productsData } = useQuery({ 
+    queryKey: ['adminProductsList'], 
+    queryFn: async () => {
+      const res = await api.get('/api/admin/products?limit=1000');
+      return res.data.items || res.data;
+    }
+  });
+
   const { data: clientsData } = useQuery({ 
     queryKey: ['adminClientsList'], 
     queryFn: async () => {
@@ -63,6 +122,35 @@ export default function OrdersPage() {
       return res.data;
     },
     enabled: !!activeOrder?.id
+  });
+
+  const { data: packingMaterials } = useQuery({
+    queryKey: ['packing-materials'],
+    queryFn: async () => {
+      const res = await api.get('/api/admin/packing-materials');
+      return res.data;
+    }
+  });
+
+  const [selectedPackingMaterial, setSelectedPackingMaterial] = useState('');
+  const [packingMaterialQuantity, setPackingMaterialQuantity] = useState(1);
+
+  const packingMaterialMutation = useMutation({
+    mutationFn: ({ id, packing_material_id, quantity_used }: { id: number, packing_material_id: number, quantity_used: number }) => 
+      api.post(`/api/admin/orders/${id}/packing-materials`, { packing_material_id, quantity_used }),
+    onSuccess: (res) => {
+      queryClient.invalidateQueries({ queryKey: ['adminOrderDetails', activeOrder?.id] });
+      if (res.data?.warning) {
+        alert('⚠️ ' + res.data.warning);
+      } else {
+        alert('Packing material recorded successfully');
+      }
+      setSelectedPackingMaterial('');
+      setPackingMaterialQuantity(1);
+    },
+    onError: (err: any) => {
+      alert(err.response?.data?.message || 'Failed to record packing material');
+    }
   });
 
   const orders = ordersData?.items || [];
@@ -186,12 +274,17 @@ export default function OrdersPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <h2 className="text-xl font-semibold">Orders</h2>
-        <Button variant="outline" onClick={handleExport}>
-          Export to Excel
-        </Button>
-      </div>
+              <div className="flex justify-between items-center">
+          <h2 className="text-xl font-semibold">Orders</h2>
+          <div className="flex gap-2">
+            {(role === 'super_admin' || role === 'sales') && (
+              <Button onClick={() => setIsManualOrderOpen(true)}>Create Manual Order</Button>
+            )}
+            <Button variant="outline" onClick={handleExport}>
+              Export to Excel
+            </Button>
+          </div>
+        </div>
 
       <div className="flex flex-wrap gap-4 items-end bg-white p-4 rounded-md border shadow-sm">
         <div className="space-y-1">
@@ -278,8 +371,9 @@ export default function OrdersPage() {
             <div className="text-center py-8">Loading details...</div>
           ) : (activeOrder && activeOrderDetails) ? (
             <Tabs defaultValue="details" className="w-full">
-              <TabsList className="grid w-full grid-cols-2 mb-4">
+              <TabsList className="grid w-full grid-cols-3 mb-4">
                 <TabsTrigger value="details">Order Details</TabsTrigger>
+                <TabsTrigger value="packing-materials">Packing Materials</TabsTrigger>
                 <TabsTrigger value="activity">Activity Log</TabsTrigger>
               </TabsList>
 
@@ -471,6 +565,84 @@ export default function OrdersPage() {
                 </div>
               </TabsContent>
 
+              <TabsContent value="packing-materials">
+                <div className="space-y-6">
+                  {(role === 'super_admin' || role === 'operator') && (
+                    <div className="bg-white p-4 border rounded-md shadow-sm space-y-4">
+                      <h4 className="font-semibold text-sm">Record Packing Material Used</h4>
+                      <div className="flex gap-4 items-end">
+                        <div className="space-y-1 flex-1">
+                          <Label>Material</Label>
+                          <select 
+                            className="flex h-9 w-full rounded-md border border-slate-200 bg-white px-3 py-1 text-sm shadow-sm"
+                            value={selectedPackingMaterial}
+                            onChange={e => setSelectedPackingMaterial(e.target.value)}
+                          >
+                            <option value="" disabled>Select material...</option>
+                            {packingMaterials?.map((m: any) => (
+                              <option key={m.id} value={m.id}>{m.name} (Stock: {m.stock_quantity})</option>
+                            ))}
+                          </select>
+                        </div>
+                        <div className="space-y-1 w-32">
+                          <Label>Quantity Used</Label>
+                          <Input 
+                            type="number" 
+                            min="1" 
+                            className="h-9" 
+                            value={packingMaterialQuantity} 
+                            onChange={e => setPackingMaterialQuantity(parseInt(e.target.value) || 1)} 
+                          />
+                        </div>
+                        <Button 
+                          onClick={() => packingMaterialMutation.mutate({ 
+                            id: activeOrder.id, 
+                            packing_material_id: parseInt(selectedPackingMaterial), 
+                            quantity_used: packingMaterialQuantity 
+                          })}
+                          disabled={!selectedPackingMaterial || packingMaterialQuantity < 1 || packingMaterialMutation.isPending}
+                        >
+                          {packingMaterialMutation.isPending ? 'Recording...' : 'Record Usage'}
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="bg-white rounded-md border shadow-sm">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Material</TableHead>
+                          <TableHead>Category</TableHead>
+                          <TableHead>Quantity Used</TableHead>
+                          <TableHead>Recorded By</TableHead>
+                          <TableHead>Date</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {activeOrderDetails.packing_material_usages?.length > 0 ? (
+                          activeOrderDetails.packing_material_usages.map((usage: any) => (
+                            <TableRow key={usage.id}>
+                              <TableCell className="font-medium">{usage.PackingMaterial?.name || `Material #${usage.packing_material_id}`}</TableCell>
+                              <TableCell>{usage.PackingMaterial?.category}</TableCell>
+                              <TableCell>{usage.quantity_used}</TableCell>
+                              <TableCell>{usage.AdminUser?.name || `User #${usage.used_by_id}`}</TableCell>
+                              <TableCell>{new Date(usage.createdAt).toLocaleString()}</TableCell>
+                            </TableRow>
+                          ))
+                        ) : (
+                          <TableRow>
+                            <TableCell colSpan={5} className="text-center py-4 text-gray-500">
+                              No packing material recorded for this order.
+                            </TableCell>
+                          </TableRow>
+                        )}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </div>
+              </TabsContent>
+
               <TabsContent value="activity">
                 <div className="space-y-4">
                   {(!activeOrderDetails.activity_logs || activeOrderDetails.activity_logs.length === 0) ? (
@@ -607,6 +779,204 @@ export default function OrdersPage() {
               </Button>
             </div>
           </div>
+        </DialogContent>
+      </Dialog>
+      <Dialog open={isManualOrderOpen} onOpenChange={setIsManualOrderOpen}>
+        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Create Manual Order (Sales/Phone)</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={e => { e.preventDefault(); if (moConsent) manualOrderMutation.mutate(); }} className="space-y-4 py-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Client (Must be approved)</Label>
+                <select 
+                  required
+                  className="flex h-10 w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm"
+                  value={moClientId}
+                  onChange={e => setMoClientId(e.target.value)}
+                >
+                  <option value="" disabled>Select Client...</option>
+                  {(clientsData || []).filter((c: any) => c.status === 'approved').map((c: any) => (
+                    <option key={c.id} value={c.id}>{c.company_name}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="space-y-2">
+                <Label>Payment Method</Label>
+                <select 
+                  required
+                  className="flex h-10 w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm"
+                  value={moPaymentMethod}
+                  onChange={e => setMoPaymentMethod(e.target.value as any)}
+                >
+                  <option value="COD">COD</option>
+                  <option value="Credit">Credit</option>
+                </select>
+              </div>
+              <div className="space-y-2">
+                <Label>Source / Channel</Label>
+                <select 
+                  required
+                  className="flex h-10 w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm"
+                  value={moSource}
+                  onChange={e => setMoSource(e.target.value)}
+                >
+                  <option value="whatsapp">WhatsApp</option>
+                  <option value="phone_call">Phone Call</option>
+                  <option value="email">Email</option>
+                  <option value="other">Other</option>
+                </select>
+              </div>
+              <div className="space-y-2">
+                <Label>Order-Level Discount %</Label>
+                <Input 
+                  type="number" min="0" max="100" step="any"
+                  value={moDiscountPercentage}
+                  onChange={e => setMoDiscountPercentage(e.target.value)}
+                  placeholder="Optional"
+                />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Items</Label>
+              <div className="space-y-2">
+                {moItems.map((item, idx) => {
+                  let displayQuantity = item.quantity;
+                  if (item.purchaseUnit === 'dozen' && item.dozenSize && item.quantity) {
+                    displayQuantity = (parseFloat(item.quantity) / item.dozenSize).toString();
+                  }
+
+                  return (
+                  <div key={idx} className="flex flex-col md:flex-row gap-2 items-start border p-2 rounded relative">
+                    <div className="flex-1 space-y-2 w-full">
+                      {item.isCustom ? (
+                        <>
+                          <Input required placeholder="Custom Item Name" value={item.customItemName} onChange={e => {
+                            const newItems = [...moItems];
+                            newItems[idx].customItemName = e.target.value;
+                            setMoItems(newItems);
+                          }} />
+                          <Input placeholder="Description" value={item.customItemDescription} onChange={e => {
+                            const newItems = [...moItems];
+                            newItems[idx].customItemDescription = e.target.value;
+                            setMoItems(newItems);
+                          }} />
+                        </>
+                      ) : (
+                        <select 
+                          required
+                          className="flex h-10 w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm"
+                          value={item.productId}
+                          onChange={e => {
+                            const newItems = [...moItems];
+                            newItems[idx].productId = e.target.value;
+                            const p = (productsData || []).find((p: any) => p.id === parseInt(e.target.value));
+                            newItems[idx].dozenSize = p?.dozen_quantity ? parseInt(p.dozen_quantity) : null;
+                            if (!newItems[idx].dozenSize) newItems[idx].purchaseUnit = 'single';
+                            setMoItems(newItems);
+                          }}
+                        >
+                          <option value="" disabled>Select Catalog Item...</option>
+                          {(productsData || []).filter((p: any) => p.is_active).map((p: any) => (
+                            <option key={p.id} value={p.id}>{p.name} (Stock: {p.stock_level})</option>
+                          ))}
+                        </select>
+                      )}
+                      
+                      <div className="flex gap-2">
+                        <Input required placeholder={item.purchaseUnit === 'dozen' ? "Qty (Dozens)" : "Qty"} type="number" min="0" step="any" value={displayQuantity === 'NaN' ? '' : displayQuantity} onChange={(e: any) => {
+                          const newItems = [...moItems];
+                          const val = parseFloat(e.target.value);
+                          if (!isNaN(val)) {
+                            if (item.purchaseUnit === 'dozen' && item.dozenSize) {
+                               newItems[idx].quantity = (val * item.dozenSize).toString();
+                            } else {
+                               newItems[idx].quantity = val.toString();
+                            }
+                          } else {
+                             newItems[idx].quantity = '';
+                          }
+                          setMoItems(newItems);
+                        }} className="md:flex-1" />
+                        
+                        {item.isCustom ? (
+                          <Input required placeholder="Price (EGP)" type="number" min="0" step="any" value={item.unitPrice} onChange={(e: any) => {
+                            const newItems = [...moItems];
+                            newItems[idx].unitPrice = e.target.value;
+                            setMoItems(newItems);
+                          }} className="md:flex-1" />
+                        ) : (
+                          <Input disabled placeholder="Catalog Price" className="md:flex-1 bg-gray-100" title="Price is automatically derived from the catalog" />
+                        )}
+                        
+                        <Input 
+                          placeholder="Disc. %" 
+                          type="number" min="0" max="100" step="any" 
+                          value={item.discountPercentage} 
+                          onChange={(e: any) => {
+                            const newItems = [...moItems];
+                            newItems[idx].discountPercentage = e.target.value;
+                            setMoItems(newItems);
+                          }} 
+                          className="w-24" 
+                        />
+
+                        {item.dozenSize && (
+                          <Button
+                            type="button" variant="outline" size="sm" className="whitespace-nowrap h-10"
+                            onClick={() => {
+                              const newItems = [...moItems];
+                              newItems[idx].purchaseUnit = item.purchaseUnit === 'single' ? 'dozen' : 'single';
+                              setMoItems(newItems);
+                            }}
+                          >
+                            Buy by: {item.purchaseUnit === 'single' ? 'Single' : 'Dozen'}
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                    
+                    <Button
+                      type="button" variant="destructive" size="icon"
+                      disabled={moItems.length === 1}
+                      onClick={() => {
+                        const newItems = [...moItems];
+                        newItems.splice(idx, 1);
+                        setMoItems(newItems);
+                      }}
+                    >
+                      X
+                    </Button>
+                  </div>
+                )})}
+                
+                <div className="flex gap-2">
+                  <Button type="button" variant="outline" size="sm" onClick={() => setMoItems([...moItems, { productId: '', quantity: '', unitPrice: '', purchaseUnit: 'single', dozenSize: null, discountPercentage: '', isCustom: false }])}>
+                    + Add Catalog Item
+                  </Button>
+                  <Button type="button" variant="outline" size="sm" onClick={() => setMoItems([...moItems, { productId: '', customItemName: '', customItemDescription: '', quantity: '', unitPrice: '', purchaseUnit: 'single', dozenSize: null, discountPercentage: '', isCustom: true }])}>
+                    + Add Custom Item
+                  </Button>
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Notes (Optional)</Label>
+              <Input value={moNotes} onChange={e => setMoNotes(e.target.value)} placeholder="Agreed to ship on Monday..." />
+            </div>
+
+            <div className="flex items-center gap-2 mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded">
+              <input type="checkbox" id="moConsent" required checked={moConsent} onChange={e => setMoConsent(e.target.checked)} className="w-4 h-4" />
+              <Label htmlFor="moConsent" className="text-sm font-semibold cursor-pointer">I confirm the client has agreed to this order and commits to payment.</Label>
+            </div>
+
+            <Button type="submit" className="w-full mt-4" disabled={manualOrderMutation.isPending || !moConsent}>
+              {manualOrderMutation.isPending ? 'Creating Order...' : 'Create Manual Order'}
+            </Button>
+          </form>
         </DialogContent>
       </Dialog>
     </div>
