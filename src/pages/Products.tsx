@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+﻿import { useState, useRef, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api, API_BASE_URL } from '../lib/api';
 import { useAuth } from '../contexts/AuthContext';
@@ -41,6 +41,7 @@ export default function ProductsPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [searchTerm, setSearchTerm] = useState('');
+  const [needsPricingFilter, setNeedsPricingFilter] = useState(false);
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [page, setPage] = useState(1);
@@ -266,8 +267,12 @@ export default function ProductsPage() {
             className="w-48 bg-white" 
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-          />
-          <Button variant="outline" onClick={handleExport}>
+            />
+            <div className="flex items-center gap-2">
+              <input type="checkbox" id="needsPricing" checked={needsPricingFilter} onChange={e => setNeedsPricingFilter(e.target.checked)} />
+              <Label htmlFor="needsPricing" className="text-sm text-gray-700 whitespace-nowrap">Needs Pricing</Label>
+            </div>
+            <Button variant="outline" onClick={handleExport}>
             Export to Excel
           </Button>
           {canEdit && (
@@ -337,17 +342,23 @@ export default function ProductsPage() {
               <TableRow><TableCell colSpan={7} className="text-center py-8">Loading...</TableCell></TableRow>
             ) : filteredProducts.map((p: any) => (
               <TableRow key={p.id} className={p.stock_level <= p.low_stock_threshold ? "bg-red-50" : ""}>
-                <TableCell>{p.id}</TableCell>
-                <TableCell className="font-medium">{p.name}</TableCell>
-                <TableCell>{p.Category?.name || 'N/A'}</TableCell>
-                <TableCell>
-                  £{Number(p.price).toFixed(2)}
-                  {p.original_price && (
-                    <span className="text-muted-foreground line-through ml-2 text-xs">
-                      £{Number(p.original_price).toFixed(2)}
-                    </span>
-                  )}
-                </TableCell>
+  <TableCell>{p.id}</TableCell>
+  <TableCell className="font-medium">{p.name}</TableCell>
+  <TableCell>{p.Category?.name || 'N/A'}</TableCell>
+  <TableCell>
+    {!p.price || p.price === '0.00' || p.price === '0' || p.price === 0 ? (
+      <Badge variant="destructive">Needs Pricing</Badge>
+    ) : (
+      <>
+        EGP {Number(p.price).toFixed(2)}
+        {p.original_price && (
+          <span className="text-muted-foreground line-through ml-2 text-xs">
+            EGP {Number(p.original_price).toFixed(2)}
+          </span>
+        )}
+      </>
+    )}
+  </TableCell>
                 <TableCell>
                   <Badge variant={p.stock_level <= p.low_stock_threshold ? "destructive" : "secondary"}>
                     {p.stock_level}
@@ -587,3 +598,6 @@ export default function ProductsPage() {
     </div>
   );
 }
+
+
+
